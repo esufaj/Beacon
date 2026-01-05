@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Beacon - Global News Monitor
+
+A modern global news monitoring web application featuring an interactive 3D globe visualization. Track real-time news events around the world with an immersive, fluid interface.
+
+![Beacon Screenshot](screenshot.png)
+
+## Features
+
+- **Interactive 3D Globe**: Powered by react-globe.gl with smooth rotation, zoom, and drag controls
+- **Real-time News Feed**: Live updates with animated notifications
+- **Location-based Filtering**: Click on globe hotspots to filter news by region
+- **Article Drawer**: Expand full articles in an elegant bottom drawer
+- **Search Functionality**: Autocomplete search for locations and topics
+- **Dark/Light Mode**: Toggle between themes with persistent preference
+- **Glassmorphism UI**: Modern frosted glass design aesthetic
+- **Category System**: Color-coded tags for Politics, Conflict, Natural Disaster, Economy, Technology, Health
+
+## Tech Stack
+
+- **Framework**: Next.js 16 with TypeScript
+- **3D Visualization**: react-globe.gl (Three.js based)
+- **Styling**: Tailwind CSS 4
+- **UI Components**: shadcn/ui
+- **Animations**: Framer Motion
+- **State Management**: Zustand
+- **Data Fetching**: TanStack Query
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+# Install dependencies
+npm install
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+├── app/                    # Next.js App Router
+│   ├── layout.tsx         # Root layout with providers
+│   ├── page.tsx           # Main dashboard page
+│   └── globals.css        # Global styles
+├── components/
+│   ├── globe/             # Globe visualization
+│   ├── news/              # News feed components
+│   ├── search/            # Search functionality
+│   └── ui/                # shadcn components
+├── stores/                # Zustand state stores
+├── hooks/                 # Custom React hooks
+├── types/                 # TypeScript definitions
+├── data/                  # Mock data
+└── lib/                   # Utilities
+```
 
-## Learn More
+## Design System
 
-To learn more about Next.js, take a look at the following resources:
+- **Background**: Near-black (#0A0A0F) in dark mode
+- **Primary Accent**: Blue (#3B82F6)
+- **Active/Alert**: Neon Orange (#FF6B35)
+- **Typography**: Inter font family
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Future Enhancements
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Connect to real news APIs (GDELT, NewsAPI)
+- Event clustering for nearby news
+- Connection lines between related events
+- Push notifications for breaking news
+- User preferences and saved searches
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT
