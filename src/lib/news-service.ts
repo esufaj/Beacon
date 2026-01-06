@@ -67,12 +67,16 @@ function categorizeArticle(article: RawArticle): Category {
 }
 
 function generateArticleId(article: RawArticle): string {
-  const titleHash = article.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .slice(0, 20);
+  const titleClean = article.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+  let hash = 0;
+  for (let i = 0; i < titleClean.length; i++) {
+    const char = titleClean.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  const titlePrefix = titleClean.slice(0, 15);
   const timestamp = new Date(article.publishedAt).getTime();
-  return `${titleHash}-${timestamp}`;
+  return `${titlePrefix}${Math.abs(hash).toString(36)}-${timestamp}`;
 }
 
 function deduplicateArticles(articles: RawArticle[]): RawArticle[] {
@@ -221,12 +225,23 @@ export async function fetchAndProcessNews(): Promise<NewsArticle[]> {
 
   console.log(`[Beacon] Processed ${processedArticles.length} articles with valid locations`);
 
+  // Deduplicate by ID to prevent React key conflicts
+  const uniqueById = new Map<string, NewsArticle>();
+  for (const article of processedArticles) {
+    if (!uniqueById.has(article.id)) {
+      uniqueById.set(article.id, article);
+    }
+  }
+  const finalArticles = Array.from(uniqueById.values());
+
   // Sort by timestamp (newest first)
-  processedArticles.sort(
+  finalArticles.sort(
     (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
   );
 
-  return processedArticles;
+  console.log(`[Beacon] Final count after ID deduplication: ${finalArticles.length} articles`);
+
+  return finalArticles;
 }
 
 export async function fetchNewsByCategory(category: Category): Promise<NewsArticle[]> {

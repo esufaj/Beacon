@@ -99,26 +99,26 @@ export function NewsCard({ article, index, isLast }: NewsCardProps) {
           "hover:bg-blue-500/10",
           "transition-colors duration-150",
           "group",
-          !isLast && "border-b border-white/5"
+          !isLast && "border-b border-black/5 dark:border-white/5"
         )}
       >
         <div className="flex items-center gap-2 mb-1.5">
           <CategoryTag category={article.category} />
-          <span className="text-[10px] text-neutral-500 ml-auto">
+          <span className="text-[10px] text-slate-400 dark:text-neutral-500 ml-auto">
             {formatDistanceToNow(article.timestamp, { addSuffix: true })}
           </span>
         </div>
 
-        <h3 className="font-semibold text-sm text-white leading-tight mb-1.5 line-clamp-2 group-hover:text-blue-400 transition-colors">
+        <h3 className="font-semibold text-sm text-slate-900 dark:text-white leading-tight mb-1.5 line-clamp-2 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors">
           {article.headline}
         </h3>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-neutral-400">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-neutral-400">
             <MapPin className="w-3 h-3 text-blue-500" />
             <span>{article.location.name}</span>
           </div>
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs text-slate-400 dark:text-neutral-500">
             {article.source}
           </span>
         </div>

@@ -24,9 +24,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`${nunitoSans.variable} font-sans antialiased bg-neutral-950`}
+        className={`${nunitoSans.variable} font-sans antialiased bg-background`}
       >
         <Providers>
           <TooltipProvider delayDuration={200}>{children}</TooltipProvider>

@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import Map from "react-map-gl/maplibre";
 import type { MapRef } from "react-map-gl/maplibre";
+import { useTheme } from "next-themes";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGlobeStore, getDisplayPoints } from "@/stores/globe-store";
 import { useNewsStore } from "@/stores/news-store";
+import { useUIStore } from "@/stores/ui-store";
 import { NewsMarker } from "./news-marker";
 import { getStyleUrl } from "@/lib/map-styles";
 
@@ -58,9 +60,14 @@ export function MapLibreGlobe() {
   } = useGlobeStore();
 
   const { filterByLocation, clearFilters } = useNewsStore();
+  const { setSidebarOpen } = useUIStore();
+  const { resolvedTheme } = useTheme();
 
   const displayPoints = useMemo(() => getDisplayPoints(points), [points]);
-  const mapStyle = useMemo(() => getStyleUrl(), []);
+  const mapStyle = useMemo(
+    () => getStyleUrl(resolvedTheme === "light" ? "light" : "dark"),
+    [resolvedTheme]
+  );
 
   useEffect(() => {
     const updateWidth = () => {
@@ -263,13 +270,10 @@ export function MapLibreGlobe() {
 
   const handleMarkerClick = useCallback(
     (point: (typeof displayPoints)[0]) => {
-      // Stop rotation first
       setAutoRotating(false);
       setSelectedPoint(point);
       filterByLocation(point.id);
 
-      // Use flyTo for smooth animated zoom (MapLibre API)
-      // https://maplibre.org/maplibre-gl-js/docs/API/classes/Map/#flyto
       if (mapRef.current) {
         mapRef.current.flyTo({
           center: [point.lng, point.lat],
@@ -278,27 +282,31 @@ export function MapLibreGlobe() {
           essential: true,
         });
       }
+
+      setTimeout(() => {
+        setSidebarOpen(true);
+      }, 1600);
     },
-    [setSelectedPoint, filterByLocation, setAutoRotating]
+    [setSelectedPoint, filterByLocation, setAutoRotating, setSidebarOpen]
   );
 
   return (
-    <div className="w-full h-full relative overflow-hidden bg-neutral-950">
+    <div className="w-full h-full relative overflow-hidden bg-background">
       {/* Loading state */}
       <div
-        className={`absolute inset-0 z-50 flex flex-col items-center justify-center bg-neutral-950 transition-opacity duration-500 ${
+        className={`absolute inset-0 z-50 flex flex-col items-center justify-center bg-background transition-opacity duration-500 ${
           isLoaded ? "opacity-0 pointer-events-none" : "opacity-100"
         }`}
       >
         <div className="relative">
-          <div className="w-16 h-16 rounded-full border-2 border-white/10" />
+          <div className="w-16 h-16 rounded-full border-2 border-foreground/10" />
           <div className="absolute inset-0 w-16 h-16 rounded-full border-2 border-transparent border-t-blue-500 animate-spin" />
           <div
             className="absolute inset-2 w-12 h-12 rounded-full border border-transparent border-t-blue-400/50 animate-spin"
             style={{ animationDuration: "1.5s", animationDirection: "reverse" }}
           />
         </div>
-        <p className="mt-6 text-sm text-white/50 tracking-widest uppercase">
+        <p className="mt-6 text-sm text-foreground/50 tracking-widest uppercase">
           Loading Globe
         </p>
       </div>

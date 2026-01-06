@@ -104,10 +104,10 @@ export function GlobeControls() {
           variant="ghost"
           size="sm"
           onClick={handleZoomOut}
-          className="h-9 w-9 rounded-xl hover:bg-white/10"
+          className="h-9 w-9 rounded-xl hover:bg-foreground/10"
           title="Zoom out"
         >
-          <Minus className="h-4 w-4 text-white" />
+          <Minus className="h-4 w-4" />
         </Button>
 
         {/* Zoom In */}
@@ -115,27 +115,27 @@ export function GlobeControls() {
           variant="ghost"
           size="sm"
           onClick={handleZoomIn}
-          className="h-9 w-9 rounded-xl hover:bg-white/10"
+          className="h-9 w-9 rounded-xl hover:bg-foreground/10"
           title="Zoom in"
         >
-          <Plus className="h-4 w-4 text-white" />
+          <Plus className="h-4 w-4" />
         </Button>
 
-        <Separator orientation="vertical" className="h-5 bg-white/10" />
+        <Separator orientation="vertical" className="h-5 bg-foreground/10" />
 
         {/* Play/Pause */}
         <Button
           variant="ghost"
           size="sm"
           onClick={handleToggleRotation}
-          className="h-9 px-3 rounded-xl hover:bg-white/10 gap-2"
+          className="h-9 px-3 rounded-xl hover:bg-foreground/10 gap-2"
         >
           {isAutoRotating ? (
-            <Pause className="h-4 w-4 text-white" />
+            <Pause className="h-4 w-4" />
           ) : (
-            <Play className="h-4 w-4 text-white" />
+            <Play className="h-4 w-4" />
           )}
-          <span className="text-xs font-medium text-white/80 hidden sm:inline">
+          <span className="text-xs font-medium text-foreground/80 hidden sm:inline">
             {isAutoRotating ? "Pause" : "Play"}
           </span>
         </Button>
@@ -146,21 +146,21 @@ export function GlobeControls() {
           size="sm"
           onClick={handleReset}
           disabled={isResetting}
-          className="h-9 px-3 rounded-xl hover:bg-white/10 gap-2"
+          className="h-9 px-3 rounded-xl hover:bg-foreground/10 gap-2"
         >
           <RotateCcw 
             className={cn(
-              "h-4 w-4 text-white transition-transform",
+              "h-4 w-4 transition-transform",
               isResetting && "animate-spin"
             )} 
             style={{ animationDuration: isResetting ? "0.3s" : undefined }}
           />
-          <span className="text-xs font-medium text-white/80 hidden sm:inline">
+          <span className="text-xs font-medium text-foreground/80 hidden sm:inline">
             Reset
           </span>
         </Button>
 
-        <Separator orientation="vertical" className="h-5 bg-white/10" />
+        <Separator orientation="vertical" className="h-5 bg-foreground/10" />
 
         {/* Settings toggle */}
         <Button
@@ -168,16 +168,16 @@ export function GlobeControls() {
           size="sm"
           onClick={() => setShowSettings(!showSettings)}
           className={cn(
-            "h-9 px-3 rounded-xl hover:bg-white/10 gap-2",
-            showSettings && "bg-white/10"
+            "h-9 px-3 rounded-xl hover:bg-foreground/10 gap-2",
+            showSettings && "bg-foreground/10"
           )}
         >
           {showSettings ? (
-            <X className="h-4 w-4 text-white" />
+            <X className="h-4 w-4" />
           ) : (
-            <Settings className="h-4 w-4 text-white" />
+            <Settings className="h-4 w-4" />
           )}
-          <span className="text-xs font-medium text-white/80 hidden sm:inline">
+          <span className="text-xs font-medium text-foreground/80 hidden sm:inline">
             Layers
           </span>
         </Button>
@@ -185,7 +185,7 @@ export function GlobeControls() {
         {/* Layer toggles - expandable */}
         {showSettings && (
           <>
-            <Separator orientation="vertical" className="h-5 bg-white/10" />
+            <Separator orientation="vertical" className="h-5 bg-foreground/10" />
             <div className="flex items-center gap-1 animate-in fade-in slide-in-from-left-2 duration-200">
               {LAYER_OPTIONS.map(({ key, icon: Icon, label }) => (
                 <Button
@@ -196,8 +196,8 @@ export function GlobeControls() {
                   className={cn(
                     "h-9 px-3 rounded-xl gap-2 transition-colors",
                     layers[key]
-                      ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                      : "text-white/50 hover:bg-white/10 hover:text-white/80"
+                      ? "bg-blue-500/20 text-blue-500 hover:bg-blue-500/30"
+                      : "text-foreground/50 hover:bg-foreground/10 hover:text-foreground/80"
                   )}
                   title={label}
                 >

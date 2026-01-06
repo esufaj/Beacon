@@ -30,7 +30,7 @@ export default function Home() {
   );
 
   return (
-    <main className="flex h-screen w-screen overflow-hidden bg-neutral-950">
+    <main className="flex h-screen w-screen overflow-hidden bg-background">
       <NewsSidebar />
 
       <div className="flex-1 relative min-w-0">
@@ -42,13 +42,13 @@ export default function Home() {
             variant="ghost"
             size="icon"
             onClick={toggleSidebar}
-            className="h-8 w-8 glass rounded-md hover:bg-white/10"
+            className="h-8 w-8 glass rounded-md"
           >
-            <Menu className="h-4 w-4 text-white" />
+            <Menu className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-2">
             <BeaconLogo />
-            <span className="text-sm font-bold text-white">Beacon</span>
+            <span className="text-sm font-bold">Beacon</span>
           </div>
         </div>
 
@@ -59,11 +59,15 @@ export default function Home() {
             ) : (
               <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse-glow" />
             )}
-            <span className="text-[10px] lg:text-xs text-neutral-400">
-              <span className="text-white font-bold">{articles.length}</span>
+            <span className="text-[10px] lg:text-xs text-muted-foreground">
+              <span className="text-foreground font-bold">
+                {articles.length}
+              </span>
               <span className="hidden sm:inline"> stories</span>
-              <span className="hidden sm:inline text-neutral-600 mx-1">•</span>
-              <span className="text-blue-400 font-bold">
+              <span className="hidden sm:inline text-muted-foreground/50 mx-1">
+                •
+              </span>
+              <span className="text-blue-500 font-bold">
                 {activeLocationsCount}
               </span>
               <span className="hidden sm:inline"> locations</span>

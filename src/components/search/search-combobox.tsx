@@ -144,12 +144,12 @@ export function SearchCombobox() {
       <div
         className={cn(
           "flex items-center gap-2 h-10 px-3 rounded-lg",
-          "bg-white/[0.03] border border-white/10",
+          "bg-black/[0.03] dark:bg-white/[0.03] border border-black/10 dark:border-white/10",
           "transition-all duration-200",
-          open && "border-blue-500/50 bg-white/[0.05]"
+          open && "border-blue-500/50 bg-black/[0.05] dark:bg-white/[0.05]"
         )}
       >
-        <Search className="w-4 h-4 text-neutral-500 shrink-0" />
+        <Search className="w-4 h-4 text-slate-400 dark:text-neutral-500 shrink-0" />
         <input
           ref={inputRef}
           type="text"
@@ -159,30 +159,30 @@ export function SearchCombobox() {
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           className={cn(
-            "flex-1 bg-transparent text-sm text-white",
-            "placeholder:text-neutral-500",
+            "flex-1 bg-transparent text-sm text-slate-900 dark:text-white",
+            "placeholder:text-slate-400 dark:placeholder:text-neutral-500",
             "outline-none border-none"
           )}
         />
         {inputValue && (
           <button
             onClick={handleClear}
-            className="p-1 hover:bg-white/10 rounded transition-colors"
+            className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors"
           >
-            <X className="w-3.5 h-3.5 text-neutral-400" />
+            <X className="w-3.5 h-3.5 text-slate-400 dark:text-neutral-400" />
           </button>
         )}
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-2 py-2 rounded-lg bg-neutral-900 border border-white/10 shadow-xl shadow-black/50 z-50 max-h-[320px] overflow-y-auto custom-scrollbar">
+        <div className="absolute top-full left-0 right-0 mt-2 py-2 rounded-lg bg-white dark:bg-neutral-900 border border-black/10 dark:border-white/10 shadow-xl shadow-black/10 dark:shadow-black/50 z-50 max-h-[320px] overflow-y-auto custom-scrollbar">
           <div className="px-3 py-1.5">
-            <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-wider">
               Locations
             </span>
           </div>
           {filteredLocations.length === 0 ? (
-            <div className="px-3 py-4 text-center text-neutral-500 text-sm">
+            <div className="px-3 py-4 text-center text-slate-400 dark:text-neutral-500 text-sm">
               No locations found
             </div>
           ) : (
@@ -200,9 +200,9 @@ export function SearchCombobox() {
                 ) : (
                   <Globe2 className="w-3.5 h-3.5 text-blue-500" />
                 )}
-                <span className="text-sm font-semibold text-white">{location.name}</span>
+                <span className="text-sm font-semibold text-slate-900 dark:text-white">{location.name}</span>
                 {"country" in location && (
-                  <span className="text-xs text-neutral-500">{location.country}</span>
+                  <span className="text-xs text-slate-400 dark:text-neutral-500">{location.country}</span>
                 )}
                 {location.count > 0 && (
                   <span className="text-xs text-orange-500 ml-auto">
@@ -210,7 +210,7 @@ export function SearchCombobox() {
                   </span>
                 )}
                 {location.count === 0 && (
-                  <span className="text-xs text-neutral-500 capitalize ml-auto">
+                  <span className="text-xs text-slate-400 dark:text-neutral-500 capitalize ml-auto">
                     {location.region.replace(/-/g, " ")}
                   </span>
                 )}
@@ -218,10 +218,10 @@ export function SearchCombobox() {
             ))
           )}
 
-          <div className="h-px bg-white/5 my-2" />
+          <div className="h-px bg-black/5 dark:bg-white/5 my-2" />
 
           <div className="px-3 py-1.5">
-            <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-wider">
               Categories
             </span>
           </div>
@@ -232,7 +232,7 @@ export function SearchCombobox() {
               className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-500/10 transition-colors text-left"
             >
               <Tag className="w-3.5 h-3.5" style={{ color: config.color }} />
-              <span className="text-sm font-semibold text-white">{config.label}</span>
+              <span className="text-sm font-semibold text-slate-900 dark:text-white">{config.label}</span>
             </button>
           ))}
         </div>

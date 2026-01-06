@@ -88,6 +88,35 @@
   --sidebar-ring: #3B82F6;
 }
 
+.light {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: rgba(255, 255, 255, 0.8);
+  --card-foreground: #0f172a;
+  --popover: rgba(255, 255, 255, 0.98);
+  --popover-foreground: #0f172a;
+  --primary: #2563eb;
+  --primary-foreground: #FFFFFF;
+  --secondary: rgba(0, 0, 0, 0.04);
+  --secondary-foreground: #0f172a;
+  --muted: rgba(0, 0, 0, 0.04);
+  --muted-foreground: #64748b;
+  --accent: #2563eb;
+  --accent-foreground: #FFFFFF;
+  --destructive: #dc2626;
+  --border: rgba(0, 0, 0, 0.1);
+  --input: rgba(0, 0, 0, 0.08);
+  --ring: #2563eb;
+  --sidebar: rgba(255, 255, 255, 0.9);
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: rgba(37, 99, 235, 0.1);
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: rgba(0, 0, 0, 0.08);
+  --sidebar-ring: #2563eb;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -105,8 +134,14 @@
   .glass {
     @apply bg-neutral-900/80 backdrop-blur-xl border border-white/10;
   }
+  .light .glass {
+    @apply bg-white/80 backdrop-blur-xl border border-black/10 shadow-lg;
+  }
   .glass-strong {
     @apply bg-neutral-900/90 backdrop-blur-2xl border border-white/15;
+  }
+  .light .glass-strong {
+    @apply bg-white/90 backdrop-blur-2xl border border-black/10 shadow-xl;
   }
   .glow-blue {
     box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
@@ -117,11 +152,20 @@
   .text-gradient {
     @apply bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent;
   }
+  .light .text-gradient {
+    @apply bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent;
+  }
   .beacon-shadow {
     box-shadow: 
       0 4px 6px -1px rgba(0, 0, 0, 0.3),
       0 2px 4px -1px rgba(0, 0, 0, 0.2),
       0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+  .light .beacon-shadow {
+    box-shadow: 
+      0 4px 6px -1px rgba(0, 0, 0, 0.1),
+      0 2px 4px -1px rgba(0, 0, 0, 0.06),
+      0 0 0 1px rgba(0, 0, 0, 0.05);
   }
   .card-hover {
     @apply transition-all duration-300 ease-out;
@@ -131,6 +175,11 @@
     box-shadow: 
       0 10px 40px -10px rgba(59, 130, 246, 0.2),
       0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+  .light .card-hover:hover {
+    box-shadow: 
+      0 10px 40px -10px rgba(59, 130, 246, 0.15),
+      0 0 0 1px rgba(0, 0, 0, 0.05);
   }
 }
 
@@ -212,10 +261,22 @@
   background: rgba(255, 255, 255, 0.15);
 }
 
+.light .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.light .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
 /* Firefox scrollbar */
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+
+.light .custom-scrollbar {
+  scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
 }
 
 /* Global scrollbar */
@@ -238,6 +299,18 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
+.light ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
 /* MapLibre GL Popup Styles */
 .maplibregl-popup {
   z-index: 50;
@@ -253,8 +326,19 @@
   color: white;
 }
 
+.light .maplibregl-popup-content {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+  color: #0f172a;
+}
+
 .maplibregl-popup-tip {
   border-top-color: rgba(23, 23, 28, 0.98) !important;
+}
+
+.light .maplibregl-popup-tip {
+  border-top-color: rgba(255, 255, 255, 0.98) !important;
 }
 
 .maplibregl-popup-close-button {
@@ -270,8 +354,17 @@
   border-radius: 4px 0 0 0 !important;
 }
 
+.light .maplibregl-ctrl-attrib {
+  background: rgba(255, 255, 255, 0.8) !important;
+  color: rgba(0, 0, 0, 0.5) !important;
+}
+
 .maplibregl-ctrl-attrib a {
   color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.light .maplibregl-ctrl-attrib a {
+  color: rgba(0, 0, 0, 0.6) !important;
 }
 
 /* Hide MapLibre Navigation Controls - we use our own */

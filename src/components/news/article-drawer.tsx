@@ -26,14 +26,14 @@ export function ArticleDrawer() {
 
   return (
     <Drawer open={!!selectedArticle} onOpenChange={(open) => !open && handleClose()}>
-      <DrawerContent className="max-h-[85vh] bg-neutral-950/95 backdrop-blur-xl border-t border-white/10">
+      <DrawerContent className="max-h-[85vh] bg-white/95 dark:bg-neutral-950/95 backdrop-blur-xl border-t border-black/10 dark:border-white/10">
         <div className="mx-auto w-full max-w-4xl">
           <DrawerHeader className="relative">
             <DrawerClose asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute right-4 top-4 h-8 w-8 rounded-full hover:bg-white/10"
+                className="absolute right-4 top-4 h-8 w-8 rounded-full hover:bg-black/5 dark:hover:bg-white/10"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -47,8 +47,8 @@ export function ArticleDrawer() {
               >
                 <div className="flex items-center gap-3 mb-4">
                   <CategoryTag category={selectedArticle.category} />
-                  <Separator orientation="vertical" className="h-4 bg-white/10" />
-                  <div className="flex items-center gap-1.5 text-xs text-neutral-400">
+                  <Separator orientation="vertical" className="h-4 bg-black/10 dark:bg-white/10" />
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-neutral-400">
                     <Clock className="w-3.5 h-3.5" />
                     <span>
                       {formatDistanceToNow(selectedArticle.timestamp, { addSuffix: true })}
@@ -56,31 +56,31 @@ export function ArticleDrawer() {
                   </div>
                 </div>
 
-                <DrawerTitle className="text-2xl font-bold text-white leading-tight mb-3 pr-10">
+                <DrawerTitle className="text-2xl font-bold text-slate-900 dark:text-white leading-tight mb-3 pr-10">
                   {selectedArticle.headline}
                 </DrawerTitle>
 
-                <DrawerDescription className="text-neutral-400 text-base leading-relaxed">
+                <DrawerDescription className="text-slate-600 dark:text-neutral-400 text-base leading-relaxed">
                   {selectedArticle.summary}
                 </DrawerDescription>
 
                 <div className="flex items-center gap-4 mt-4">
-                  <div className="flex items-center gap-1.5 text-sm text-neutral-400">
+                  <div className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-neutral-400">
                     <MapPin className="w-4 h-4 text-blue-500" />
                     <span>
                       {selectedArticle.location.name}, {selectedArticle.location.country}
                     </span>
                   </div>
-                  <Separator orientation="vertical" className="h-4 bg-white/10" />
-                  <span className="text-sm text-neutral-400">
-                    Source: <span className="text-white">{selectedArticle.source}</span>
+                  <Separator orientation="vertical" className="h-4 bg-black/10 dark:bg-white/10" />
+                  <span className="text-sm text-slate-500 dark:text-neutral-400">
+                    Source: <span className="text-slate-900 dark:text-white">{selectedArticle.source}</span>
                   </span>
                 </div>
               </motion.div>
             )}
           </DrawerHeader>
 
-          <Separator className="bg-white/5" />
+          <Separator className="bg-black/5 dark:bg-white/5" />
 
           <ScrollArea className="h-[50vh] px-6">
             {selectedArticle && (
@@ -90,27 +90,27 @@ export function ArticleDrawer() {
                 transition={{ duration: 0.3, delay: 0.1 }}
                 className="py-6"
               >
-                <article className="prose prose-invert prose-sm max-w-none">
+                <article className="prose prose-slate dark:prose-invert prose-sm max-w-none">
                   {selectedArticle.content.split("\n\n").map((paragraph, index) => (
                     <p
                       key={index}
-                      className="text-neutral-300 leading-relaxed mb-4 last:mb-0"
+                      className="text-slate-700 dark:text-neutral-300 leading-relaxed mb-4 last:mb-0"
                     >
                       {paragraph}
                     </p>
                   ))}
                 </article>
 
-                <div className="mt-8 pt-6 border-t border-white/5">
+                <div className="mt-8 pt-6 border-t border-black/5 dark:border-white/5">
                   <div className="flex items-center justify-between">
-                    <div className="text-xs text-neutral-500">
+                    <div className="text-xs text-slate-400 dark:text-neutral-500">
                       Published {format(selectedArticle.timestamp, "MMMM d, yyyy 'at' h:mm a")}
                     </div>
                     {selectedArticle.url && (
                       <Button
                         variant="outline"
                         size="sm"
-                        className="gap-2 border-white/10 hover:bg-white/5 text-neutral-300"
+                        className="gap-2 border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-slate-700 dark:text-neutral-300"
                         asChild
                       >
                         <a href={selectedArticle.url} target="_blank" rel="noopener noreferrer">
