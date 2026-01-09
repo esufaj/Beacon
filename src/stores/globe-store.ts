@@ -12,6 +12,8 @@ export interface LayerVisibility {
   borders: boolean;
 }
 
+export type ProjectionType = "globe" | "mercator";
+
 interface GlobeState {
   points: GeoPoint[];
   hoveredPoint: GeoPoint | null;
@@ -23,6 +25,7 @@ interface GlobeState {
   fastSpinCallback: FastSpinCallback | null;
   layers: LayerVisibility;
   mapRef: MapRef | null;
+  projection: ProjectionType;
 
   setHoveredPoint: (point: GeoPoint | null) => void;
   setSelectedPoint: (point: GeoPoint | null) => void;
@@ -37,10 +40,15 @@ interface GlobeState {
   flyTo: (lat: number, lng: number, zoom?: number) => void;
   toggleLayer: (layer: keyof LayerVisibility) => void;
   setMapRef: (ref: MapRef | null) => void;
+  setProjection: (projection: ProjectionType) => void;
+  toggleProjection: () => void;
 }
 
 function createPointId(name: string): string {
-  return name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  return name
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
 }
 
 function getBasePoints(): GeoPoint[] {
@@ -76,6 +84,7 @@ export const useGlobeStore = create<GlobeState>((set, get) => ({
     borders: true,
   },
   mapRef: null,
+  projection: "globe",
 
   setHoveredPoint: (point) => set({ hoveredPoint: point }),
 
@@ -92,11 +101,13 @@ export const useGlobeStore = create<GlobeState>((set, get) => ({
   setFastSpinCallback: (callback) => set({ fastSpinCallback: callback }),
 
   triggerFastSpinReset: () => {
-    const { fastSpinCallback, mapRef } = get();
-    const defaultZoom = getDefaultZoom(typeof window !== "undefined" ? window.innerWidth : 1024);
-    
+    const { fastSpinCallback, mapRef, projection } = get();
+    const defaultZoom = getDefaultZoom(
+      typeof window !== "undefined" ? window.innerWidth : 1024
+    );
+
     set({ selectedPoint: null });
-    
+
     if (mapRef) {
       mapRef.flyTo({
         center: [0, 20],
@@ -106,7 +117,11 @@ export const useGlobeStore = create<GlobeState>((set, get) => ({
         duration: 1200,
       });
     }
-    
+
+    if (projection === "mercator") {
+      return;
+    }
+
     if (fastSpinCallback) {
       fastSpinCallback();
     } else {
@@ -115,9 +130,11 @@ export const useGlobeStore = create<GlobeState>((set, get) => ({
   },
 
   resetView: () => {
-    const { resetViewCallback, mapRef } = get();
-    const defaultZoom = getDefaultZoom(typeof window !== "undefined" ? window.innerWidth : 1024);
-    
+    const { resetViewCallback, mapRef, projection } = get();
+    const defaultZoom = getDefaultZoom(
+      typeof window !== "undefined" ? window.innerWidth : 1024
+    );
+
     if (resetViewCallback) {
       resetViewCallback();
     }
@@ -130,7 +147,11 @@ export const useGlobeStore = create<GlobeState>((set, get) => ({
         duration: 1500,
       });
     }
-    set({ selectedPoint: null, isAutoRotating: true });
+    if (projection === "mercator") {
+      set({ selectedPoint: null });
+    } else {
+      set({ selectedPoint: null, isAutoRotating: true });
+    }
   },
 
   flyTo: (lat, lng, zoom = 5) => {
@@ -156,6 +177,28 @@ export const useGlobeStore = create<GlobeState>((set, get) => ({
     })),
 
   setMapRef: (ref) => set({ mapRef: ref }),
+
+  setProjection: (projection) => set({ projection }),
+
+  toggleProjection: () => {
+    const { projection, mapRef } = get();
+    const newProjection = projection === "globe" ? "mercator" : "globe";
+
+    if (newProjection === "mercator") {
+      set({ projection: newProjection, isAutoRotating: false });
+    } else {
+      set({ projection: newProjection });
+    }
+
+    if (mapRef) {
+      const map = mapRef.getMap();
+      try {
+        map.setProjection({ type: newProjection });
+      } catch (error) {
+        console.warn("Failed to set projection:", error);
+      }
+    }
+  },
 
   initializePoints: (articles?: NewsArticle[]) => {
     const basePoints = getBasePoints();

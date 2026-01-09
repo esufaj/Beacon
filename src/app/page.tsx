@@ -37,42 +37,47 @@ export default function Home() {
         <MapLibreGlobe />
         <GlobeControls />
 
-        <div className="absolute top-4 left-4 z-10 flex items-center gap-2 lg:hidden">
+        {/* Mobile header */}
+        <div className="absolute top-4 left-4 z-10 flex items-center gap-3 lg:hidden">
           <Button
             variant="ghost"
             size="icon"
             onClick={toggleSidebar}
-            className="h-8 w-8 glass rounded-md"
+            className="h-8 w-8 glass rounded-lg bg-card border border-border shadow-sm hover:bg-accent"
           >
             <Menu className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-2">
             <BeaconLogo />
-            <span className="text-sm font-bold">Beacon</span>
+            <span className="text-[14px] font-semibold text-foreground">
+              Beacon
+            </span>
           </div>
         </div>
 
-        <div className="absolute top-4 right-4 lg:top-6 lg:left-6 lg:right-auto z-10">
-          <div className="glass rounded-full px-3 py-1.5 lg:px-4 lg:py-2 flex items-center gap-2">
+        {/* Status pill */}
+        <div className="absolute top-4 right-4 lg:top-5 lg:left-5 lg:right-auto z-10">
+          <div className="glass rounded-full px-3 py-1.5 flex items-center gap-2">
             {isLoading ? (
-              <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+              <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse" />
             ) : (
-              <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse-glow" />
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping-slow absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+              </span>
             )}
-            <span className="text-[10px] lg:text-xs text-muted-foreground">
-              <span className="text-foreground font-bold">
+            <span className="text-[11px] text-muted-foreground tabular-nums">
+              <span className="text-foreground font-medium">
                 {articles.length}
               </span>
               <span className="hidden sm:inline"> stories</span>
-              <span className="hidden sm:inline text-muted-foreground/50 mx-1">
-                •
-              </span>
-              <span className="text-blue-500 font-bold">
+              <span className="text-muted-foreground/40 mx-1 sm:mx-1.5">•</span>
+              <span className="text-foreground font-medium">
                 {activeLocationsCount}
               </span>
               <span className="hidden sm:inline"> locations</span>
               {source === "error" && (
-                <span className="text-red-400 ml-1">!</span>
+                <span className="text-destructive ml-1.5 font-medium">!</span>
               )}
             </span>
           </div>

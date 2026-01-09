@@ -96,8 +96,8 @@ export function NewsMarker({ point, isSelected, onClick }: NewsMarkerProps) {
           offset={20}
           className="news-marker-popup"
         >
-          <div className="px-3 py-2 min-w-[140px]">
-            <div className="flex items-center gap-2 mb-1">
+          <div className="px-3 py-2.5 min-w-[160px]">
+            <div className="flex items-center gap-2 mb-1.5">
               <div
                 className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{
@@ -105,16 +105,16 @@ export function NewsMarker({ point, isSelected, onClick }: NewsMarkerProps) {
                   boxShadow: `0 0 6px ${baseColor}`,
                 }}
               />
-              <span className="font-semibold text-sm text-white truncate">
+              <span className="font-semibold text-[13px] text-foreground truncate">
                 {point.name}
               </span>
             </div>
             {point.region && (
-              <div className="text-xs text-neutral-400 pl-4 mb-1">
+              <div className="text-[11px] text-muted-foreground pl-4 mb-1 capitalize">
                 {point.region}
               </div>
             )}
-            <div className="text-xs text-blue-400 font-medium pl-4">
+            <div className="text-[11px] text-primary font-medium pl-4 tabular-nums">
               {point.newsCount} {point.newsCount === 1 ? "story" : "stories"}
             </div>
           </div>

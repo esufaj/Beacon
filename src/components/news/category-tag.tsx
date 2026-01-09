@@ -14,11 +14,11 @@ export function CategoryTag({ category, className }: CategoryTagProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider",
-        config.bgColor,
+        "inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide",
+        "bg-secondary text-secondary-foreground",
         className
       )}
-      style={{ color: config.color }}
+      style={{ backgroundColor: `${config.bgColor}15`, color: config.color }}
     >
       {config.label}
     </span>

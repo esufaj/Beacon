@@ -11,9 +11,10 @@ import {
   X,
   Plus,
   Minus,
+  Globe,
+  Map,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { useGlobeStore, type LayerVisibility } from "@/stores/globe-store";
 import { useNewsStore } from "@/stores/news-store";
 import { cn } from "@/lib/utils";
@@ -31,7 +32,7 @@ export function GlobeControls() {
   const [showSettings, setShowSettings] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const zoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   const {
     isAutoRotating,
     setAutoRotating,
@@ -39,16 +40,20 @@ export function GlobeControls() {
     mapRef,
     layers,
     toggleLayer,
+    projection,
+    toggleProjection,
   } = useGlobeStore();
   const { clearFilters } = useNewsStore();
+
+  const isMapView = projection === "mercator";
 
   const handleReset = () => {
     clearFilters();
     setShowSettings(false);
     setIsResetting(true);
-    
+
     triggerFastSpinReset();
-    
+
     setTimeout(() => {
       setIsResetting(false);
     }, 1300);
@@ -60,7 +65,7 @@ export function GlobeControls() {
 
   const handleZoomIn = () => {
     if (!mapRef) return;
-    
+
     if (zoomTimeoutRef.current) {
       clearTimeout(zoomTimeoutRef.current);
     }
@@ -79,7 +84,7 @@ export function GlobeControls() {
 
   const handleZoomOut = () => {
     if (!mapRef) return;
-    
+
     if (zoomTimeoutRef.current) {
       clearTimeout(zoomTimeoutRef.current);
     }
@@ -98,13 +103,13 @@ export function GlobeControls() {
 
   return (
     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
-      <div className="glass rounded-2xl px-1.5 py-1.5 flex items-center gap-1">
+      <div className="glass rounded-xl px-1 py-1 flex items-center gap-0.5 shadow-lg">
         {/* Zoom Out */}
         <Button
           variant="ghost"
           size="sm"
           onClick={handleZoomOut}
-          className="h-9 w-9 rounded-xl hover:bg-foreground/10"
+          className="h-8 w-8 rounded-lg hover:bg-accent"
           title="Zoom out"
         >
           <Minus className="h-4 w-4" />
@@ -115,27 +120,61 @@ export function GlobeControls() {
           variant="ghost"
           size="sm"
           onClick={handleZoomIn}
-          className="h-9 w-9 rounded-xl hover:bg-foreground/10"
+          className="h-8 w-8 rounded-lg hover:bg-accent"
           title="Zoom in"
         >
           <Plus className="h-4 w-4" />
         </Button>
 
-        <Separator orientation="vertical" className="h-5 bg-foreground/10" />
+        <div className="w-px h-5 bg-border mx-0.5" />
+
+        {/* Globe/Map Toggle */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleProjection}
+          className={cn(
+            "h-8 px-2.5 rounded-lg hover:bg-accent gap-1.5",
+            isMapView && "bg-accent"
+          )}
+          title={isMapView ? "Switch to globe view" : "Switch to map view"}
+        >
+          {isMapView ? (
+            <Globe className="h-3.5 w-3.5" />
+          ) : (
+            <Map className="h-3.5 w-3.5" />
+          )}
+          <span className="text-[12px] font-medium hidden sm:inline">
+            {isMapView ? "Globe" : "Map"}
+          </span>
+        </Button>
+
+        <div className="w-px h-5 bg-border mx-0.5" />
 
         {/* Play/Pause */}
         <Button
           variant="ghost"
           size="sm"
           onClick={handleToggleRotation}
-          className="h-9 px-3 rounded-xl hover:bg-foreground/10 gap-2"
+          disabled={isMapView}
+          className={cn(
+            "h-8 px-2.5 rounded-lg hover:bg-accent gap-1.5",
+            isMapView && "opacity-50 cursor-not-allowed"
+          )}
+          title={
+            isMapView
+              ? "Rotation disabled in map view"
+              : isAutoRotating
+              ? "Pause rotation"
+              : "Play rotation"
+          }
         >
           {isAutoRotating ? (
-            <Pause className="h-4 w-4" />
+            <Pause className="h-3.5 w-3.5" />
           ) : (
-            <Play className="h-4 w-4" />
+            <Play className="h-3.5 w-3.5" />
           )}
-          <span className="text-xs font-medium text-foreground/80 hidden sm:inline">
+          <span className="text-[12px] font-medium hidden sm:inline">
             {isAutoRotating ? "Pause" : "Play"}
           </span>
         </Button>
@@ -146,21 +185,21 @@ export function GlobeControls() {
           size="sm"
           onClick={handleReset}
           disabled={isResetting}
-          className="h-9 px-3 rounded-xl hover:bg-foreground/10 gap-2"
+          className="h-8 px-2.5 rounded-lg hover:bg-accent gap-1.5"
         >
-          <RotateCcw 
+          <RotateCcw
             className={cn(
-              "h-4 w-4 transition-transform",
+              "h-3.5 w-3.5 transition-transform",
               isResetting && "animate-spin"
-            )} 
+            )}
             style={{ animationDuration: isResetting ? "0.3s" : undefined }}
           />
-          <span className="text-xs font-medium text-foreground/80 hidden sm:inline">
+          <span className="text-[12px] font-medium hidden sm:inline">
             Reset
           </span>
         </Button>
 
-        <Separator orientation="vertical" className="h-5 bg-foreground/10" />
+        <div className="w-px h-5 bg-border mx-0.5" />
 
         {/* Settings toggle */}
         <Button
@@ -168,16 +207,16 @@ export function GlobeControls() {
           size="sm"
           onClick={() => setShowSettings(!showSettings)}
           className={cn(
-            "h-9 px-3 rounded-xl hover:bg-foreground/10 gap-2",
-            showSettings && "bg-foreground/10"
+            "h-8 px-2.5 rounded-lg hover:bg-accent gap-1.5",
+            showSettings && "bg-accent"
           )}
         >
           {showSettings ? (
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           ) : (
-            <Settings className="h-4 w-4" />
+            <Settings className="h-3.5 w-3.5" />
           )}
-          <span className="text-xs font-medium text-foreground/80 hidden sm:inline">
+          <span className="text-[12px] font-medium hidden sm:inline">
             Layers
           </span>
         </Button>
@@ -185,8 +224,8 @@ export function GlobeControls() {
         {/* Layer toggles - expandable */}
         {showSettings && (
           <>
-            <Separator orientation="vertical" className="h-5 bg-foreground/10" />
-            <div className="flex items-center gap-1 animate-in fade-in slide-in-from-left-2 duration-200">
+            <div className="w-px h-5 bg-border mx-0.5" />
+            <div className="flex items-center gap-0.5 animate-slide-in-right">
               {LAYER_OPTIONS.map(({ key, icon: Icon, label }) => (
                 <Button
                   key={key}
@@ -194,15 +233,15 @@ export function GlobeControls() {
                   size="sm"
                   onClick={() => toggleLayer(key)}
                   className={cn(
-                    "h-9 px-3 rounded-xl gap-2 transition-colors",
+                    "h-8 px-2.5 rounded-lg gap-1.5 transition-colors",
                     layers[key]
-                      ? "bg-blue-500/20 text-blue-500 hover:bg-blue-500/30"
-                      : "text-foreground/50 hover:bg-foreground/10 hover:text-foreground/80"
+                      ? "bg-primary/10 text-primary hover:bg-primary/15"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
                   )}
                   title={label}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span className="text-xs font-medium hidden lg:inline">
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="text-[12px] font-medium hidden lg:inline">
                     {label}
                   </span>
                 </Button>

@@ -53,6 +53,7 @@ export function MapLibreGlobe() {
     selectedPoint,
     isAutoRotating,
     layers,
+    projection,
     setSelectedPoint,
     setAutoRotating,
     setMapRef,
@@ -91,33 +92,37 @@ export function MapLibreGlobe() {
     return () => setMapRef(null);
   }, [setMapRef, isLoaded]);
 
-  // Set globe projection after style loads
+  // Set globe projection after style loads and when style/theme changes
   useEffect(() => {
     if (!mapRef.current || !isLoaded) return;
 
     const map = mapRef.current.getMap();
 
-    const setGlobe = () => {
+    const applyProjection = () => {
       try {
-        map.setProjection({ type: "globe" });
+        map.setProjection({ type: projection });
       } catch (e) {
-        console.warn("Globe projection not available:", e);
+        console.warn("Projection not available:", e);
       }
     };
 
     if (map.isStyleLoaded()) {
-      setGlobe();
-    } else {
-      map.once("style.load", setGlobe);
+      applyProjection();
     }
-  }, [isLoaded]);
+
+    // Also listen for future style loads (theme changes are style loads)
+    map.on("style.load", applyProjection);
+
+    return () => {
+      map.off("style.load", applyProjection);
+    };
+  }, [isLoaded, projection]);
 
   // Toggle layer visibility
   useEffect(() => {
     if (!mapRef.current || !isLoaded) return;
 
     const map = mapRef.current.getMap();
-    if (!map.isStyleLoaded()) return;
 
     const toggleLayerVisibility = (patterns: string[], visible: boolean) => {
       const style = map.getStyle();
@@ -141,8 +146,22 @@ export function MapLibreGlobe() {
       }
     };
 
-    toggleLayerVisibility(["label", "place", "poi", "name"], layers.labels);
-    toggleLayerVisibility(["boundary", "border", "admin"], layers.borders);
+    const applyLayers = () => {
+      toggleLayerVisibility(["label", "place", "poi", "name"], layers.labels);
+      toggleLayerVisibility(["boundary", "border", "admin"], layers.borders);
+    };
+
+    // Apply immediately if style is already loaded
+    if (map.isStyleLoaded()) {
+      applyLayers();
+    }
+
+    // Also listen for future style loads (theme changes are style loads)
+    map.on("style.load", applyLayers);
+
+    return () => {
+      map.off("style.load", applyLayers);
+    };
   }, [isLoaded, layers.labels, layers.borders]);
 
   const triggerFastSpinReset = useCallback(() => {
@@ -271,8 +290,16 @@ export function MapLibreGlobe() {
   const handleMarkerClick = useCallback(
     (point: (typeof displayPoints)[0]) => {
       setAutoRotating(false);
-      setSelectedPoint(point);
       filterByLocation(point.id);
+
+      const isAlreadyAtLocation = selectedPoint?.id === point.id;
+
+      if (isAlreadyAtLocation) {
+        setSidebarOpen(true);
+        return;
+      }
+
+      setSelectedPoint(point);
 
       if (mapRef.current) {
         mapRef.current.flyTo({
@@ -287,7 +314,13 @@ export function MapLibreGlobe() {
         setSidebarOpen(true);
       }, 1600);
     },
-    [setSelectedPoint, filterByLocation, setAutoRotating, setSidebarOpen]
+    [
+      selectedPoint,
+      setSelectedPoint,
+      filterByLocation,
+      setAutoRotating,
+      setSidebarOpen,
+    ]
   );
 
   return (
