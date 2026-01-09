@@ -107,7 +107,7 @@ export function ArticleDrawer() {
                     .map((paragraph, index) => (
                       <p
                         key={index}
-                        className="text-foreground text-[15px] leading-[1.7]"
+                        className="text-foreground/80 text-[15px] leading-[1.7]"
                       >
                         {paragraph}
                       </p>
@@ -117,7 +117,7 @@ export function ArticleDrawer() {
                 <div className="mt-8 pt-5 border-t border-border">
                   <div className="flex items-center justify-between">
                     <div className="text-[12px] text-muted-foreground">
-                      Published
+                      Published{" "}
                       {format(
                         selectedArticle.timestamp,
                         "MMMM d, yyyy 'at' h:mm a"

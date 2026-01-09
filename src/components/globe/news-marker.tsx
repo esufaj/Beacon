@@ -111,7 +111,7 @@ export function NewsMarker({ point, isSelected, onClick }: NewsMarkerProps) {
             </div>
             {point.region && (
               <div className="text-[11px] text-muted-foreground pl-4 mb-1 capitalize">
-                {point.region}
+                {point.region.replace(/-/g, " ")}
               </div>
             )}
             <div className="text-[11px] text-primary font-medium pl-4 tabular-nums">

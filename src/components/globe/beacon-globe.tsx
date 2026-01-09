@@ -394,7 +394,7 @@ export function BeaconGlobe() {
 
       {/* Atmospheric glow effect */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-radial from-blue-500/5 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle,_rgba(59,130,246,0.05)_0%,_transparent_70%)]" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-neutral-950/60" />
       </div>
     </div>

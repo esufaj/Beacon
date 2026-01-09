@@ -105,7 +105,7 @@ export function NewsCard({ article, index, isLast }: NewsCardProps) {
       <div
         onClick={handleClick}
         className={cn(
-          "mx-4 px-3py-3 cursor-pointer rounded-lg",
+          "mx-2 px-3 py-3 cursor-pointer rounded-lg",
           "hover:bg-accent",
           "transition-all duration-150 ease-out",
           "group",
@@ -128,7 +128,7 @@ export function NewsCard({ article, index, isLast }: NewsCardProps) {
             <MapPin className="w-3 h-3 text-primary/70" />
             <span>{article.location.name}</span>
           </div>
-          <span className="text-muted-foreground/40">•</span>
+          <span className="text-muted-foreground/60">•</span>
           <span className="text-muted-foreground/60">{article.source}</span>
         </div>
       </div>

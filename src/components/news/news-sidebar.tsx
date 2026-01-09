@@ -70,7 +70,7 @@ export function NewsSidebar() {
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2.5">
               <BeaconLogo />
-              <h1 className="test-[15px] font-semibold tracking-[-0.01em] text-foreground">
+              <h1 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
                 Beacon
               </h1>
             </div>
@@ -141,7 +141,7 @@ export function NewsSidebar() {
                 <Globe2 className="w-6 h-6 text-muted-foreground" />
               </div>
               <p className="text-muted-foreground text-sm font-medium mb-1">
-                No stories found for this location
+                No stories found
               </p>
               <p className="text-muted-foreground text-[13px] mb-3">
                 Try selecting a different location

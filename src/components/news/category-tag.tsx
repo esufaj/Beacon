@@ -18,7 +18,7 @@ export function CategoryTag({ category, className }: CategoryTagProps) {
         "bg-secondary text-secondary-foreground",
         className
       )}
-      style={{ backgroundColor: `${config.bgColor}15`, color: config.color }}
+      style={{ backgroundColor: `${config.color}15`, color: config.color }}
     >
       {config.label}
     </span>

@@ -343,32 +343,21 @@
   z-index: 50;
 }
 
+/* Popup styles using CSS variables for automatic theme support */
 .maplibregl-popup-content {
-  background: hsl(240, 10%, 3.9% / 0.96) !important;
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid hsl(240, 3.7%, 15.9% / 0.6) !important;
+  background: var(--popover) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  border: 1px solid var(--border) !important;
   border-radius: 12px !important;
   padding: 0 !important;
-  box-shadow: 0 0 0 1px hsl(0 0% 100% / 0.02) inset,
-    0 4px 6px -1px rgb(0 0 0 / 0.2), 0 12px 24px -4px rgb(0 0 0 / 0.3) !important;
-  color: hsl(0 0% 98%);
-}
-
-:root:not(.dark) .maplibregl-popup-content {
-  background: hsl(0 0% 100% / 0.96) !important;
-  border: 1px solid hsl(240, 5.9% 90%) !important;
-  box-shadow: 0 0 0 1px hsl(0 0% 0% / 0.02) inset,
-    0 4px 6px -1px rgb(0 0 0 / 0.05), 0 12px 24px -4px rgb(0 0 0 / 0.08) !important;
-  color: hsl(240, 10%, 3.9%);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 12px 24px -4px rgb(0 0 0 / 0.15) !important;
+  color: var(--popover-foreground) !important;
 }
 
 .maplibregl-popup-tip {
-  border-top-color: hsl(240, 10%, 3.9% / 0.96) !important;
-}
-
-:root:not(.dark) .maplibregl-popup-tip {
-  border-top-color: hsl(0 0% 100% / 0.96) !important;
+  border-top-color: var(--popover) !important;
 }
 
 .maplibregl-popup-close-button {
