@@ -1,4 +1,4 @@
-export type Category = 
+export type Category =
   | "politics"
   | "conflict"
   | "natural-disaster"
@@ -94,3 +94,48 @@ export interface NewsSource {
   fetchByCategory?: (category: string) => Promise<RawArticle[]>;
 }
 
+export type BiasRating =
+  | "left"
+  | "center-left"
+  | "center"
+  | "center-right"
+  | "right";
+
+export type SourceCategory =
+  | "mainstream"
+  | "progressive"
+  | "conservative"
+  | "regional"
+  | "business"
+  | "tech"
+  | "international";
+
+export interface RssSource {
+  id: number;
+  name: string;
+  feedUrl: string;
+  websiteUrl: string | null;
+  biasRating: BiasRating | null;
+  category: SourceCategory | null;
+  isActive: boolean;
+  lastFetchedAt: Date | null;
+  fetchError: string | null;
+}
+
+export interface RssArticle {
+  id: string;
+  sourceId: number | null;
+  sourceName: string;
+  sourceBias: BiasRating | null;
+  sourceCategory: SourceCategory | null;
+  guid: string | null;
+  articleUrl: string;
+  title: string;
+  description: string | null;
+  content: string | null;
+  author: string | null;
+  publishedAt: Date | null;
+  imageUrl: string | null;
+  aiProcessed: boolean;
+  createdAt: Date;
+}

@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useNewsStore } from "@/stores/news-store";
 import { useGlobeStore } from "@/stores/globe-store";
+import { supabase } from "@/lib/supabase";
 import type { NewsArticle } from "@/types";
 
 interface NewsAPIResponse {
@@ -13,8 +14,19 @@ interface NewsAPIResponse {
   error?: string;
 }
 
-export const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes for fresher news
-const INITIAL_FETCH_DELAY_MS = 500; // 0.5 second after mount
+export const POLL_INTERVAL_MS = 2 * 60 * 1000;
+const INITIAL_FETCH_DELAY_MS = 500;
+
+const CATEGORY_MAP: Record<string, string> = {
+  "Politics": "politics",
+  "Business": "economy",
+  "Technology": "technology",
+  "Science": "technology",
+  "Health": "health",
+  "World": "conflict",
+  "Crime": "conflict",
+  "Environment": "natural-disaster",
+};
 
 export function useRealtimeNews() {
   const { articles, setArticles, isLoading, setIsLoading } = useNewsStore();
@@ -22,6 +34,7 @@ export function useRealtimeNews() {
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const [source, setSource] = useState<string>("unknown");
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const mountedRef = useRef(true);
   const fetchingRef = useRef(false);
 
@@ -49,18 +62,15 @@ export function useRealtimeNews() {
         console.warn("News API warning:", data.error);
       }
 
-      // Parse timestamps from JSON
       const articlesWithDates = data.articles.map((article) => ({
         ...article,
         timestamp: new Date(article.timestamp),
       }));
 
-      // Merge new articles with existing ones, avoiding duplicates
       const existingIds = new Set(articles.map((a) => a.id));
       const newArticles = articlesWithDates.filter((a) => !existingIds.has(a.id));
       
       if (newArticles.length > 0 || articles.length === 0) {
-        // Sort by timestamp (newest first) and limit to reasonable number
         const merged = [...newArticles, ...articles]
           .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
           .slice(0, 100);
@@ -82,7 +92,7 @@ export function useRealtimeNews() {
       }
       fetchingRef.current = false;
     }
-  }, [articles, setArticles, initializePoints]);
+  }, [articles, setArticles, initializePoints, setIsLoading]);
 
   const refreshNews = useCallback(async () => {
     try {
@@ -95,7 +105,6 @@ export function useRealtimeNews() {
     }
   }, [fetchNews]);
 
-  // Initial fetch
   useEffect(() => {
     mountedRef.current = true;
     
@@ -107,12 +116,98 @@ export function useRealtimeNews() {
       mountedRef.current = false;
       clearTimeout(timeoutId);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Polling interval
+  useEffect(() => {
+    if (!supabase) return;
+
+    console.log("[Beacon] Setting up realtime subscription...");
+
+    const channel = supabase
+      .channel("articles-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "articles",
+          filter: "ai_processed=eq.true",
+        },
+        (payload) => {
+          if (!mountedRef.current) return;
+          
+          const newRecord = payload.new as {
+            id: string;
+            title: string;
+            summary: string | null;
+            content: string | null;
+            description: string | null;
+            location: string | null;
+            category: string | null;
+            published_at: string | null;
+            created_at: string;
+            image_url: string | null;
+            article_url: string;
+          };
+          
+          console.log("[Beacon] Realtime update:", newRecord.title?.slice(0, 40));
+          
+          const newsArticle: NewsArticle = {
+            id: newRecord.id,
+            headline: newRecord.title,
+            summary: newRecord.summary || newRecord.description || "",
+            content: newRecord.content || newRecord.description || "",
+            location: {
+              name: newRecord.location || "Unknown",
+              lat: 0,
+              lng: 0,
+              country: "Unknown",
+              region: "Unknown",
+            },
+            category: (CATEGORY_MAP[newRecord.category || ""] || "politics") as NewsArticle["category"],
+            timestamp: new Date(newRecord.published_at || newRecord.created_at),
+            source: "Unknown",
+            imageUrl: newRecord.image_url || undefined,
+            url: newRecord.article_url,
+          };
+          
+          setArticles((prev) => {
+            const exists = prev.some((a) => a.id === newsArticle.id);
+            if (exists) {
+              return prev.map((a) => (a.id === newsArticle.id ? newsArticle : a));
+            }
+            return [newsArticle, ...prev].slice(0, 100);
+          });
+          
+          initializePoints();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "articles",
+        },
+        (payload) => {
+          if (!mountedRef.current) return;
+          console.log("[Beacon] New article inserted:", (payload.new as { title: string }).title?.slice(0, 40));
+        }
+      )
+      .subscribe((status) => {
+        console.log("[Beacon] Realtime subscription status:", status);
+        setRealtimeConnected(status === "SUBSCRIBED");
+      });
+
+    return () => {
+      console.log("[Beacon] Cleaning up realtime subscription...");
+      supabase.removeChannel(channel);
+    };
+  }, [setArticles, initializePoints]);
+
   useEffect(() => {
     const intervalId = setInterval(() => {
-      console.log(`[Beacon] Polling for news updates... (every ${POLL_INTERVAL_MS / 60000} minutes)`);
+      console.log(`[Beacon] Polling for news updates...`);
       fetchNews();
     }, POLL_INTERVAL_MS);
 
@@ -124,6 +219,7 @@ export function useRealtimeNews() {
     error,
     lastFetch,
     source,
+    realtimeConnected,
     fetchNews,
     refreshNews,
   };
