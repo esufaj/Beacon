@@ -109,7 +109,7 @@ export function GlobeControls() {
           variant="ghost"
           size="sm"
           onClick={handleZoomOut}
-          className="h-8 w-8 rounded-lg hover:bg-accent"
+          className="h-8 px-2.5 rounded-lg hover:bg-accent"
           title="Zoom out"
         >
           <Minus className="h-4 w-4" />
@@ -120,7 +120,7 @@ export function GlobeControls() {
           variant="ghost"
           size="sm"
           onClick={handleZoomIn}
-          className="h-8 w-8 rounded-lg hover:bg-accent"
+          className="h-8 px-2.5 rounded-lg hover:bg-accent"
           title="Zoom in"
         >
           <Plus className="h-4 w-4" />

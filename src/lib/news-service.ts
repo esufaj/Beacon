@@ -1,6 +1,22 @@
-import type { NewsArticle, Category } from "@/types";
+import type { NewsArticle, Category, BiasRating, Sentiment, Urgency } from "@/types";
 import { supabase, type DbArticle } from "./supabase";
-import { geocode } from "./geocoding";
+import { batchGeocode } from "./geocoding";
+import type { PostgrestError } from "@supabase/supabase-js";
+
+// Helper to format Supabase/Postgrest errors for logging
+function formatSupabaseError(error: PostgrestError): string {
+  const parts: string[] = [];
+  if (error.message) parts.push(error.message);
+  if (error.code) parts.push(`[code: ${error.code}]`);
+  if (error.details) parts.push(`[details: ${error.details}]`);
+  if (error.hint) parts.push(`[hint: ${error.hint}]`);
+  return parts.length > 0 ? parts.join(" ") : "Unknown error";
+}
+
+// Check if we're in a browser environment with Supabase available
+function isSupabaseReady(): boolean {
+  return typeof window !== "undefined" && supabase !== null;
+}
 
 const CATEGORY_MAP: Record<string, Category> = {
   "Politics": "politics",
@@ -22,30 +38,36 @@ function mapCategory(aiCategory: string | null): Category {
   return CATEGORY_MAP[aiCategory] || "politics";
 }
 
-async function getLocationCoords(locationStr: string | null): Promise<{ lat: number; lng: number; name: string; country: string; region: string } | null> {
-  if (!locationStr || locationStr === "unknown") return null;
-  
-  const cached = locationCache.get(locationStr);
-  if (cached) return cached;
-  
-  const result = await geocode(locationStr);
-  if (result) {
-    const loc = { lat: result.lat, lng: result.lng, name: result.name, country: result.country, region: result.region };
-    locationCache.set(locationStr, loc);
-    return loc;
-  }
-  return null;
+function stripHtml(html: string | null): string {
+  if (!html) return "";
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-const locationCache = new Map<string, { lat: number; lng: number; name: string; country: string; region: string }>();
+export interface FetchOptions {
+  limit?: number;
+  offset?: number;
+  hoursBack?: number;
+}
 
-export async function fetchAndProcessNews(): Promise<NewsArticle[]> {
+export async function fetchAndProcessNews(options: FetchOptions = {}): Promise<NewsArticle[]> {
   if (!supabase) {
     console.error("[Beacon] Supabase client not initialized");
     return [];
   }
 
-  console.log("[Beacon] Fetching articles from Supabase...");
+  const { limit = 50, offset = 0, hoursBack = 48 } = options;
+  const cutoffDate = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
+
+  console.log(`[Beacon] Fetching articles from last ${hoursBack} hours...`);
   
   const { data: articles, error } = await supabase
     .from("articles")
@@ -53,11 +75,12 @@ export async function fetchAndProcessNews(): Promise<NewsArticle[]> {
       *,
       rss_sources (name, bias_rating, category)
     `)
+    .gte("published_at", cutoffDate)
     .order("published_at", { ascending: false, nullsFirst: false })
-    .limit(100);
+    .range(offset, offset + limit - 1);
   
   if (error) {
-    console.error("[Beacon] Error fetching articles:", error);
+    console.error("[Beacon] Error fetching articles:", formatSupabaseError(error));
     return [];
   }
   
@@ -68,36 +91,58 @@ export async function fetchAndProcessNews(): Promise<NewsArticle[]> {
   
   console.log(`[Beacon] Found ${articles.length} articles, processing...`);
   
+  const uniqueLocations = [...new Set(
+    (articles as DbArticle[])
+      .map(a => a.location)
+      .filter((loc): loc is string => !!loc && loc !== "unknown")
+  )];
+  
+  const locationMap = batchGeocode(uniqueLocations);
+  
   const processedArticles: NewsArticle[] = [];
   
   for (const article of articles as DbArticle[]) {
-    const locationCoords = await getLocationCoords(article.location);
+    const locationResult = article.location ? locationMap.get(article.location) : null;
     
-    const defaultLocation = {
-      name: article.location || "Unknown",
-      lat: locationCoords?.lat || 0,
-      lng: locationCoords?.lng || 0,
-      country: locationCoords?.country || "Unknown",
-      region: locationCoords?.region || "Unknown",
+    const location = {
+      name: locationResult?.name || article.location || "Unknown",
+      lat: locationResult?.lat || 0,
+      lng: locationResult?.lng || 0,
+      country: locationResult?.country || "Unknown",
+      region: locationResult?.region || "Unknown",
     };
+
+    const summary = stripHtml(article.summary || article.description || article.content?.slice(0, 300) || null);
+    const content = stripHtml(article.content || article.description || null);
 
     processedArticles.push({
       id: article.id,
-      headline: article.title,
-      summary: article.summary || article.description || article.content?.slice(0, 200) || "",
-      content: article.content || article.description || "",
-      location: defaultLocation,
+      headline: stripHtml(article.title),
+      summary,
+      content,
+      location,
       category: mapCategory(article.category),
       timestamp: article.published_at ? new Date(article.published_at) : new Date(article.created_at),
       source: article.rss_sources?.name || "Unknown",
       imageUrl: article.image_url || undefined,
       url: article.article_url,
+      // AI metadata
+      credibilityScore: article.credibility_score || undefined,
+      biasRating: (article.bias_rating as BiasRating) || undefined,
+      sentiment: (article.sentiment as Sentiment) || undefined,
+      urgency: (article.urgency as Urgency) || undefined,
+      readingTime: article.reading_time || undefined,
+      wordCount: article.word_count || undefined,
+      keywords: article.keywords || undefined,
+      entitiesPeople: article.entities_people || undefined,
+      entitiesOrganizations: article.entities_organizations || undefined,
+      entitiesLocations: article.entities_locations || undefined,
+      articleType: article.article_type || undefined,
+      targetAudience: article.target_audience || undefined,
     });
   }
   
   console.log(`[Beacon] Processed ${processedArticles.length} articles`);
-  
-  processedArticles.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   
   return processedArticles;
 }
@@ -142,7 +187,7 @@ export async function getArticleCount(): Promise<number> {
     .select("*", { count: "exact", head: true });
   
   if (error) {
-    console.error("[Beacon] Error getting article count:", error);
+    console.error("[Beacon] Error getting article count:", formatSupabaseError(error));
     return 0;
   }
   
@@ -202,5 +247,48 @@ export async function triggerManualSync(): Promise<{ success: boolean; message: 
       success: false,
       message: error instanceof Error ? error.message : "Unknown error",
     };
+  }
+}
+
+export interface RssSource {
+  id: number;
+  name: string;
+  category: string | null;
+  bias_rating: string | null;
+}
+
+export async function getAllSources(): Promise<RssSource[]> {
+  // Return empty array during SSR or when Supabase is not configured
+  if (!supabase) {
+    return [];
+  }
+
+  // Additional check for client-side only execution
+  if (typeof window === "undefined") {
+    return [];
+  }
+  
+  try {
+    const { data: sources, error } = await supabase
+      .from("rss_sources")
+      .select("id, name, category, bias_rating")
+      .eq("is_active", true)
+      .order("name");
+    
+    if (error) {
+      // Only log in development to avoid noise in production
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[Beacon] Error fetching sources:", formatSupabaseError(error));
+      }
+      return [];
+    }
+    
+    return sources ?? [];
+  } catch (err) {
+    // Catch any unexpected errors (network issues, etc.)
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[Beacon] Unexpected error fetching sources:", err instanceof Error ? err.message : "Unknown error");
+    }
+    return [];
   }
 }

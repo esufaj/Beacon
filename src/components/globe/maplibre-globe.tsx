@@ -4,12 +4,22 @@ import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import Map from "react-map-gl/maplibre";
 import type { MapRef } from "react-map-gl/maplibre";
 import { useTheme } from "next-themes";
+import { motion } from "framer-motion";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGlobeStore, getDisplayPoints } from "@/stores/globe-store";
 import { useNewsStore } from "@/stores/news-store";
 import { useUIStore } from "@/stores/ui-store";
 import { NewsMarker } from "./news-marker";
 import { getStyleUrl } from "@/lib/map-styles";
+
+// ASCII loading characters for globe
+const LOADING_FRAMES = ["◐", "◓", "◑", "◒"];
+const LOADING_MESSAGES = [
+  "Scanning the globe...",
+  "Finding stories...",
+  "Mapping locations...",
+  "Almost there...",
+];
 
 const getDefaultZoom = (width: number): number => {
   if (width >= 1920) return 2.2;
@@ -35,6 +45,26 @@ export function MapLibreGlobe() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isAnimatingIn, setIsAnimatingIn] = useState(true);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [loadingFrame, setLoadingFrame] = useState(0);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
+  // Animate loading state
+  useEffect(() => {
+    if (isLoaded) return;
+    
+    const frameInterval = setInterval(() => {
+      setLoadingFrame((f) => (f + 1) % LOADING_FRAMES.length);
+    }, 120);
+
+    const messageInterval = setInterval(() => {
+      setLoadingMessageIndex((m) => (m + 1) % LOADING_MESSAGES.length);
+    }, 2000);
+
+    return () => {
+      clearInterval(frameInterval);
+      clearInterval(messageInterval);
+    };
+  }, [isLoaded]);
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
   const isZoomingRef = useRef(false);
@@ -325,23 +355,32 @@ export function MapLibreGlobe() {
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-background">
-      {/* Loading state */}
+      {/* Loading state - ASCII style */}
       <div
-        className={`absolute inset-0 z-50 flex flex-col items-center justify-center bg-background transition-opacity duration-500 ${
+        className={`absolute inset-0 z-50 flex flex-col items-center justify-center bg-background transition-opacity duration-700 ${
           isLoaded ? "opacity-0 pointer-events-none" : "opacity-100"
         }`}
       >
-        <div className="relative">
-          <div className="w-16 h-16 rounded-full border-2 border-foreground/10" />
-          <div className="absolute inset-0 w-16 h-16 rounded-full border-2 border-transparent border-t-blue-500 animate-spin" />
-          <div
-            className="absolute inset-2 w-12 h-12 rounded-full border border-transparent border-t-blue-400/50 animate-spin"
-            style={{ animationDuration: "1.5s", animationDirection: "reverse" }}
-          />
-        </div>
-        <p className="mt-6 text-sm text-foreground/50 tracking-widest uppercase">
-          Loading Globe
-        </p>
+        {/* ASCII spinner */}
+        <motion.div 
+          className="font-mono text-5xl text-primary mb-5 select-none"
+          animate={{ rotate: [0, 0, 0, 0] }}
+          transition={{ duration: 0.5, repeat: Infinity }}
+        >
+          {LOADING_FRAMES[loadingFrame]}
+        </motion.div>
+
+        {/* Message */}
+        <motion.p
+          key={loadingMessageIndex}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+          className="text-sm text-muted-foreground font-medium"
+        >
+          {LOADING_MESSAGES[loadingMessageIndex]}
+        </motion.p>
       </div>
 
       {/* Globe container with grow animation */}

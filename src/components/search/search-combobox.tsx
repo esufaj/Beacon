@@ -1,154 +1,119 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
-import { Search, MapPin, Tag, X, Globe2 } from "lucide-react";
+import { Search, X, FileText, User, Building2, Tag } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useNewsStore } from "@/stores/news-store";
-import { useGlobeStore } from "@/stores/globe-store";
-import { WORLD_CITIES } from "@/data/world-cities";
-import { CATEGORY_CONFIG, type Category, type GeoPoint } from "@/types";
 import { cn } from "@/lib/utils";
+import { FilterButton } from "./filter-panel";
+import type { NewsArticle } from "@/types";
 
-const MAJOR_CITIES = WORLD_CITIES.filter(
-  (c) => c.population > 1000000 || c.isCapital
-)
-  .sort((a, b) => b.population - a.population)
-  .slice(0, 100);
+interface SearchResult {
+  article: NewsArticle;
+  matchType: "headline" | "content" | "person" | "organization" | "keyword";
+  matchText: string;
+}
 
 export function SearchCombobox() {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const { setSearchQuery, filterByLocation, clearFilters, articles } =
+  const { setSearchQuery, clearFilters, articles, setSelectedArticle } =
     useNewsStore();
-  const { setSelectedPoint, setAutoRotating, flyTo, resetView, projection } =
-    useGlobeStore();
 
-  // Get locations that have news
-  const newsLocations = useMemo(() => {
-    const locationMap = new Map<
-      string,
-      { count: number; lat: number; lng: number; region: string }
-    >();
+  // Search articles by content, people, organizations, keywords
+  const searchResults = useMemo(() => {
+    if (!inputValue || inputValue.length < 2) return [];
+
+    const query = inputValue.toLowerCase();
+    const results: SearchResult[] = [];
+    const seenIds = new Set<string>();
 
     for (const article of articles) {
-      const key = article.location.name.toLowerCase();
-      const existing = locationMap.get(key);
-      if (existing) {
-        existing.count++;
-      } else {
-        locationMap.set(key, {
-          count: 1,
-          lat: article.location.lat,
-          lng: article.location.lng,
-          region: article.location.region,
+      if (seenIds.has(article.id)) continue;
+
+      // Check headline
+      if (article.headline.toLowerCase().includes(query)) {
+        results.push({
+          article,
+          matchType: "headline",
+          matchText: article.headline,
         });
+        seenIds.add(article.id);
+        continue;
+      }
+
+      // Check content/summary
+      if (
+        article.content.toLowerCase().includes(query) ||
+        article.summary.toLowerCase().includes(query)
+      ) {
+        results.push({
+          article,
+          matchType: "content",
+          matchText: article.summary.slice(0, 100) + "...",
+        });
+        seenIds.add(article.id);
+        continue;
+      }
+
+      // Check people
+      const matchedPerson = article.entitiesPeople?.find((p) =>
+        p.toLowerCase().includes(query)
+      );
+      if (matchedPerson) {
+        results.push({
+          article,
+          matchType: "person",
+          matchText: matchedPerson,
+        });
+        seenIds.add(article.id);
+        continue;
+      }
+
+      // Check organizations
+      const matchedOrg = article.entitiesOrganizations?.find((o) =>
+        o.toLowerCase().includes(query)
+      );
+      if (matchedOrg) {
+        results.push({
+          article,
+          matchType: "organization",
+          matchText: matchedOrg,
+        });
+        seenIds.add(article.id);
+        continue;
+      }
+
+      // Check keywords
+      const matchedKeyword = article.keywords?.find((k) =>
+        k.toLowerCase().includes(query)
+      );
+      if (matchedKeyword) {
+        results.push({
+          article,
+          matchType: "keyword",
+          matchText: matchedKeyword,
+        });
+        seenIds.add(article.id);
+        continue;
       }
     }
 
-    return Array.from(locationMap.entries())
-      .map(([name, data]) => ({
-        id: name.replace(/\s+/g, "-"),
-        name: name.charAt(0).toUpperCase() + name.slice(1),
-        ...data,
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [articles]);
+    return results.slice(0, 8);
+  }, [inputValue, articles]);
 
-  const filteredLocations = useMemo(() => {
-    if (!inputValue) {
-      // Show locations with news first, then major cities
-      const withNews = newsLocations.slice(0, 4);
-      const majorCities = MAJOR_CITIES.filter(
-        (c) =>
-          !newsLocations.some(
-            (n) => n.name.toLowerCase() === c.name.toLowerCase()
-          )
-      )
-        .slice(0, 6 - withNews.length)
-        .map((c) => ({
-          id: c.name.toLowerCase().replace(/\s+/g, "-"),
-          name: c.name,
-          lat: c.lat,
-          lng: c.lng,
-          region: c.region,
-          count: 0,
-        }));
-      return [...withNews, ...majorCities];
-    }
-
-    const query = inputValue.toLowerCase();
-
-    // Search in news locations first
-    const newsMatches = newsLocations
-      .filter((loc) => loc.name.toLowerCase().includes(query))
-      .slice(0, 3);
-
-    // Then search in world cities
-    const cityMatches = WORLD_CITIES.filter(
-      (c) =>
-        c.name.toLowerCase().includes(query) ||
-        c.country.toLowerCase().includes(query)
-    )
-      .filter(
-        (c) =>
-          !newsMatches.some(
-            (n) => n.name.toLowerCase() === c.name.toLowerCase()
-          )
-      )
-      .slice(0, 6 - newsMatches.length)
-      .map((c) => ({
-        id: c.name.toLowerCase().replace(/\s+/g, "-"),
-        name: c.name,
-        lat: c.lat,
-        lng: c.lng,
-        region: c.region,
-        count: 0,
-        country: c.country,
-      }));
-
-    return [...newsMatches, ...cityMatches];
-  }, [inputValue, newsLocations]);
-
-  const categories = Object.entries(CATEGORY_CONFIG) as [
-    Category,
-    (typeof CATEGORY_CONFIG)[Category]
-  ][];
-
-  const handleLocationSelect = (location: (typeof filteredLocations)[0]) => {
-    const point: GeoPoint = {
-      id: location.id,
-      lat: location.lat,
-      lng: location.lng,
-      name: location.name,
-      region: location.region,
-      hasNews: location.count > 0,
-      newsCount: location.count,
-    };
-
-    setSelectedPoint(point);
-    setAutoRotating(false);
-    filterByLocation(location.id);
-    flyTo(location.lat, location.lng, 1.5);
-    setInputValue(location.name);
-    setOpen(false);
-    inputRef.current?.blur();
-  };
-
-  const handleCategorySelect = (category: Category) => {
-    setSearchQuery(CATEGORY_CONFIG[category].label);
-    setInputValue(CATEGORY_CONFIG[category].label);
+  const handleArticleSelect = (result: SearchResult) => {
+    setSelectedArticle(result.article);
+    setInputValue("");
     setOpen(false);
     inputRef.current?.blur();
   };
 
   const handleClear = () => {
     setInputValue("");
+    setSearchQuery("");
     clearFilters();
-    setSelectedPoint(null);
-    if (projection !== "mercator") {
-      setAutoRotating(true);
-    }
-    resetView();
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,112 +123,179 @@ export function SearchCombobox() {
     if (!open && value) setOpen(true);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setOpen(false);
+      inputRef.current?.blur();
+    }
+    if (e.key === "Enter" && searchResults.length > 0) {
+      handleArticleSelect(searchResults[0]);
+    }
+  };
+
+  const getMatchIcon = (matchType: SearchResult["matchType"]) => {
+    switch (matchType) {
+      case "headline":
+      case "content":
+        return <FileText className="w-3.5 h-3.5" />;
+      case "person":
+        return <User className="w-3.5 h-3.5" />;
+      case "organization":
+        return <Building2 className="w-3.5 h-3.5" />;
+      case "keyword":
+        return <Tag className="w-3.5 h-3.5" />;
+    }
+  };
+
+  const getMatchLabel = (matchType: SearchResult["matchType"]) => {
+    switch (matchType) {
+      case "headline":
+        return "Title";
+      case "content":
+        return "Content";
+      case "person":
+        return "Person";
+      case "organization":
+        return "Organization";
+      case "keyword":
+        return "Keyword";
+    }
+  };
+
   return (
-    <div className="relative">
+    <div className="relative w-full max-w-sm">
       <div
         className={cn(
-          "flex items-center gap-2.5 h-9 px-3 rounded-lg",
-          "bg-secondary/50 border border-border",
+          "group flex items-center gap-2.5 h-10 px-3.5 rounded-xl",
+          "bg-background/60 backdrop-blur-sm",
+          "border border-border/60",
           "transition-all duration-200 ease-out",
-          open && "border-ring bg-secondary"
+          "hover:border-border hover:bg-background/80",
+          open &&
+            "border-primary/40 bg-background shadow-sm ring-2 ring-primary/10"
         )}
       >
-        <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+        <Search
+          className={cn(
+            "w-4 h-4 shrink-0 transition-colors duration-200",
+            open ? "text-primary" : "text-muted-foreground"
+          )}
+        />
         <input
           ref={inputRef}
           type="text"
-          placeholder="Search locations, topics..."
+          placeholder="Search articles..."
           value={inputValue}
           onChange={handleInputChange}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onBlur={() => setTimeout(() => setOpen(false), 200)}
+          onKeyDown={handleKeyDown}
           className={cn(
-            "flex-1 bg-transparent text-sm text-[13px] text-foreground",
-            "placeholder:text-muted-foreground",
-            "outline-none border-none"
+            "flex-1 bg-transparent text-sm text-foreground",
+            "placeholder:text-muted-foreground/70",
+            "outline-none border-none",
+            "selection:bg-primary/20"
           )}
         />
-        {inputValue && (
-          <button
-            onClick={handleClear}
-            className="p-1 hover:bg-accent rounded-md transition-colors"
-          >
-            <X className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-        )}
+        <AnimatePresence>
+          {inputValue && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.15 }}
+              onClick={handleClear}
+              className="p-1 hover:bg-muted rounded-md transition-colors"
+            >
+              <X className="w-3.5 h-3.5 text-muted-foreground" />
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* Filter button */}
+        <div className="h-5 w-px bg-border/60 mx-0.5" />
+        <FilterButton />
       </div>
 
-      {open && (
-        <div className="absolute top-full left-0 right-0 mt-2 py-1.5 rounded-lg bg-popover border border-border shadow-lg z-50 max-h-[320px] overflow-y-auto custom-scrollbar animate-scale-in">
-          <div className="px-3 py-1.5">
-            <span className="text-[10px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-wider">
-              Locations
-            </span>
-          </div>
-          {filteredLocations.length === 0 ? (
-            <div className="px-3 py-4 text-center text-muted-foreground text-[13px]">
-              No locations found
-            </div>
-          ) : (
-            filteredLocations.map((location) => (
-              <button
-                key={location.id}
-                onMouseDown={() => handleLocationSelect(location)}
-                className="w-full flex items-center gap-2.5 px-3 py-2 mx-1.5 rounded-md hover:bg-accent transition-colors text-left"
-                style={{ width: "calc(100% - 12px)" }}
-              >
-                {location.count > 0 ? (
-                  <div className="relative">
-                    <MapPin className="w-3.5 h-3.5 text-amber-500" />
-                    <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-amber-500 rounded-full" />
-                  </div>
-                ) : (
-                  <Globe2 className="w-3.5 h-3.5 text-muted-foreground" />
-                )}
-                <span className="text-[13px] font-medium text-foreground">
-                  {location.name}
+      <AnimatePresence>
+        {open && inputValue.length >= 2 && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+            className="absolute top-full left-0 right-0 mt-2 rounded-xl bg-popover/95 backdrop-blur-xl border border-border/80 shadow-lg shadow-black/5 z-50 overflow-hidden"
+          >
+            <div className="p-1.5">
+              <div className="px-2.5 py-2">
+                <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
+                  {searchResults.length > 0
+                    ? `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`
+                    : "No results"}
                 </span>
-                {"country" in location && (
-                  <span className="text-[11px] text-muted-foreground">
-                    {location.country as string}
-                  </span>
-                )}
-                {location.count > 0 && (
-                  <span className="text-[11px] text-amber-600 dark:text-amber-400 ml-auto tabular-nums">
-                    {location.count}{" "}
-                    {location.count === 1 ? "story" : "stories"}
-                  </span>
-                )}
-                {location.count === 0 && (
-                  <span className="text-[11px] text-muted-foreground/60 capitalize ml-auto">
-                    {location.region.replace(/-/g, " ")}
-                  </span>
-                )}
-              </button>
-            ))
-          )}
+              </div>
 
-          <div className="h-px bg-border mx-3 my-1.5" />
+              {searchResults.length === 0 ? (
+                <div className="px-3 py-6 text-center text-muted-foreground text-sm">
+                  No articles found for &quot;{inputValue}&quot;
+                </div>
+              ) : (
+                <div className="space-y-0.5">
+                  {searchResults.map((result, index) => (
+                    <motion.button
+                      key={result.article.id}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.15, delay: index * 0.02 }}
+                      onMouseDown={() => handleArticleSelect(result)}
+                      className={cn(
+                        "w-full flex items-start gap-3 px-2.5 py-2.5 rounded-lg",
+                        "hover:bg-accent/80 transition-all duration-150",
+                        "text-left group/item"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "flex items-center justify-center w-7 h-7 rounded-lg shrink-0 mt-0.5",
+                          "bg-primary/10 text-primary"
+                        )}
+                      >
+                        {getMatchIcon(result.matchType)}
+                      </div>
 
-          <div className="px-3 py-2">
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Categories
-            </span>
-          </div>
-          {categories.map(([key, config]) => (
-            <button
-              key={key}
-              onMouseDown={() => handleCategorySelect(key)}
-              className="w-full flex items-center gap-2.5 px-3 py-2 mx-1.5 rounded-md hover:bg-accent transition-colors text-left"
-            >
-              <Tag className="w-3.5 h-3.5" style={{ color: config.color }} />
-              <span className="text-[13px] font-medium text-foreground">
-                {config.label}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                            {result.article.source}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground/60">
+                            •
+                          </span>
+                          <span className="text-[10px] text-primary/80 font-medium">
+                            {getMatchLabel(result.matchType)}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-foreground line-clamp-1">
+                          {result.article.headline}
+                        </p>
+                        {result.matchType !== "headline" && (
+                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                            {result.matchType === "person" ||
+                            result.matchType === "organization" ||
+                            result.matchType === "keyword"
+                              ? `Matched: ${result.matchText}`
+                              : result.matchText}
+                          </p>
+                        )}
+                      </div>
+                    </motion.button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

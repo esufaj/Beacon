@@ -4,7 +4,8 @@ import { useEffect, useCallback, useState, useRef } from "react";
 import { useNewsStore } from "@/stores/news-store";
 import { useGlobeStore } from "@/stores/globe-store";
 import { supabase } from "@/lib/supabase";
-import type { NewsArticle } from "@/types";
+import type { NewsArticle, Category, BiasRating, Sentiment, Urgency } from "@/types";
+import { geocode } from "@/lib/geocoding";
 
 interface NewsAPIResponse {
   articles: NewsArticle[];
@@ -15,9 +16,9 @@ interface NewsAPIResponse {
 }
 
 export const POLL_INTERVAL_MS = 2 * 60 * 1000;
-const INITIAL_FETCH_DELAY_MS = 500;
+const INITIAL_FETCH_DELAY_MS = 100;
 
-const CATEGORY_MAP: Record<string, string> = {
+const CATEGORY_MAP: Record<string, Category> = {
   "Politics": "politics",
   "Business": "economy",
   "Technology": "technology",
@@ -26,6 +27,10 @@ const CATEGORY_MAP: Record<string, string> = {
   "World": "conflict",
   "Crime": "conflict",
   "Environment": "natural-disaster",
+  "Sports": "politics",
+  "Entertainment": "politics",
+  "Education": "politics",
+  "Other": "politics",
 };
 
 export function useRealtimeNews() {
@@ -119,7 +124,10 @@ export function useRealtimeNews() {
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) {
+      console.warn("[Beacon] Supabase not configured, skipping realtime subscription");
+      return;
+    }
 
     console.log("[Beacon] Setting up realtime subscription...");
 
@@ -148,9 +156,23 @@ export function useRealtimeNews() {
             created_at: string;
             image_url: string | null;
             article_url: string;
+            credibility_score: number | null;
+            bias_rating: string | null;
+            sentiment: string | null;
+            urgency: string | null;
+            reading_time: number | null;
+            word_count: number | null;
+            keywords: string[] | null;
+            entities_people: string[] | null;
+            entities_organizations: string[] | null;
+            entities_locations: string[] | null;
+            article_type: string | null;
+            target_audience: string | null;
           };
           
           console.log("[Beacon] Realtime update:", newRecord.title?.slice(0, 40));
+          
+          const locationResult = newRecord.location ? geocode(newRecord.location) : null;
           
           const newsArticle: NewsArticle = {
             id: newRecord.id,
@@ -158,26 +180,38 @@ export function useRealtimeNews() {
             summary: newRecord.summary || newRecord.description || "",
             content: newRecord.content || newRecord.description || "",
             location: {
-              name: newRecord.location || "Unknown",
-              lat: 0,
-              lng: 0,
-              country: "Unknown",
-              region: "Unknown",
+              name: locationResult?.name || newRecord.location || "Unknown",
+              lat: locationResult?.lat || 0,
+              lng: locationResult?.lng || 0,
+              country: locationResult?.country || "Unknown",
+              region: locationResult?.region || "Unknown",
             },
-            category: (CATEGORY_MAP[newRecord.category || ""] || "politics") as NewsArticle["category"],
+            category: CATEGORY_MAP[newRecord.category || ""] || "politics",
             timestamp: new Date(newRecord.published_at || newRecord.created_at),
             source: "Unknown",
             imageUrl: newRecord.image_url || undefined,
             url: newRecord.article_url,
+            credibilityScore: newRecord.credibility_score || undefined,
+            biasRating: (newRecord.bias_rating as BiasRating) || undefined,
+            sentiment: (newRecord.sentiment as Sentiment) || undefined,
+            urgency: (newRecord.urgency as Urgency) || undefined,
+            readingTime: newRecord.reading_time || undefined,
+            wordCount: newRecord.word_count || undefined,
+            keywords: newRecord.keywords || undefined,
+            entitiesPeople: newRecord.entities_people || undefined,
+            entitiesOrganizations: newRecord.entities_organizations || undefined,
+            entitiesLocations: newRecord.entities_locations || undefined,
+            articleType: newRecord.article_type || undefined,
+            targetAudience: newRecord.target_audience || undefined,
           };
           
-          setArticles((prev) => {
-            const exists = prev.some((a) => a.id === newsArticle.id);
-            if (exists) {
-              return prev.map((a) => (a.id === newsArticle.id ? newsArticle : a));
-            }
-            return [newsArticle, ...prev].slice(0, 100);
-          });
+          const { articles: currentArticles, setArticles: updateArticles } = useNewsStore.getState();
+          const exists = currentArticles.some((a: NewsArticle) => a.id === newsArticle.id);
+          if (exists) {
+            updateArticles(currentArticles.map((a: NewsArticle) => (a.id === newsArticle.id ? newsArticle : a)));
+          } else {
+            updateArticles([newsArticle, ...currentArticles].slice(0, 100));
+          }
           
           initializePoints();
         }
@@ -201,9 +235,11 @@ export function useRealtimeNews() {
 
     return () => {
       console.log("[Beacon] Cleaning up realtime subscription...");
-      supabase.removeChannel(channel);
+      if (supabase) {
+        supabase.removeChannel(channel);
+      }
     };
-  }, [setArticles, initializePoints]);
+  }, [initializePoints]);
 
   useEffect(() => {
     const intervalId = setInterval(() => {

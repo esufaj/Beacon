@@ -14,6 +14,9 @@ export interface Location {
   region: string;
 }
 
+export type Sentiment = "positive" | "negative" | "neutral" | "mixed";
+export type Urgency = "critical" | "high" | "medium" | "low";
+
 export interface NewsArticle {
   id: string;
   headline: string;
@@ -25,6 +28,19 @@ export interface NewsArticle {
   source: string;
   imageUrl?: string;
   url?: string;
+  // AI-extracted metadata
+  credibilityScore?: number;
+  biasRating?: BiasRating;
+  sentiment?: Sentiment;
+  urgency?: Urgency;
+  readingTime?: number;
+  wordCount?: number;
+  keywords?: string[];
+  entitiesPeople?: string[];
+  entitiesOrganizations?: string[];
+  entitiesLocations?: string[];
+  articleType?: string;
+  targetAudience?: string;
 }
 
 export interface GeoPoint {
