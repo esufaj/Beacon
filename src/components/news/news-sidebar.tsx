@@ -1,12 +1,14 @@
 "use client";
 
-import { Globe2, X, Loader2 } from "lucide-react";
+import { Globe2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNewsStore } from "@/stores/news-store";
 import { useGlobeStore } from "@/stores/globe-store";
 import { useUIStore } from "@/stores/ui-store";
 import { NewsCard } from "./news-card";
+import { NewsCardSkeletonList } from "./news-card-skeleton";
 import { SearchCombobox } from "@/components/search/search-combobox";
+import { ActiveFilters } from "@/components/search/filter-panel";
 import { BeaconLogo } from "@/components/beacon-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
@@ -89,6 +91,9 @@ export function NewsSidebar() {
 
           <SearchCombobox />
 
+          {/* Active filter pills */}
+          <ActiveFilters />
+
           {hasActiveFilter && (
             <div className="mt-4 flex items-center justify-between py-2 px-3 rounded-lg bg-accent/50 border border-border">
               <div className="flex items-center gap-2 text-[13px]">
@@ -124,17 +129,7 @@ export function NewsSidebar() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {isLoading && filteredArticles.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center px-6 py-12">
-              <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center mb-4">
-                <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
-              </div>
-              <p className="text-foreground text-sm font-medium mb-1">
-                Loading stories...
-              </p>
-              <p className="text-muted-foreground text-[13px]">
-                Fetching latest news from around the world
-              </p>
-            </div>
+            <NewsCardSkeletonList count={6} />
           ) : filteredArticles.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-6 py-12">
               <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center mb-4">

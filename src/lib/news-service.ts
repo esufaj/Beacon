@@ -1,293 +1,155 @@
-import type { NewsArticle, RawArticle, Category } from "@/types";
-import { newsAPISource } from "./news-sources/newsapi";
-import { gnewsSource } from "./news-sources/gnews";
-import { theNewsAPISource } from "./news-sources/thenewsapi";
-import { mediaStackSource } from "./news-sources/mediastack";
-import { extractLocation } from "./location-extractor";
-import { geocode, type GeocodingResult } from "./geocoding";
+import type { NewsArticle, Category, BiasRating, Sentiment, Urgency } from "@/types";
+import { supabase, type DbArticle } from "./supabase";
+import { batchGeocode } from "./geocoding";
+import type { PostgrestError } from "@supabase/supabase-js";
 
-interface ProcessedArticle extends Omit<NewsArticle, "timestamp"> {
-  timestamp: Date;
-  rawSource: string;
+// Helper to format Supabase/Postgrest errors for logging
+function formatSupabaseError(error: PostgrestError): string {
+  const parts: string[] = [];
+  if (error.message) parts.push(error.message);
+  if (error.code) parts.push(`[code: ${error.code}]`);
+  if (error.details) parts.push(`[details: ${error.details}]`);
+  if (error.hint) parts.push(`[hint: ${error.hint}]`);
+  return parts.length > 0 ? parts.join(" ") : "Unknown error";
 }
 
-const CATEGORY_KEYWORDS: Record<Category, string[]> = {
-  politics: [
-    "election", "vote", "president", "minister", "parliament", "congress",
-    "senate", "government", "policy", "legislation", "law", "political",
-    "democrat", "republican", "party", "campaign", "ballot", "diplomat",
-  ],
-  conflict: [
-    "war", "military", "attack", "bomb", "missile", "soldier", "army",
-    "troops", "fighting", "battle", "conflict", "strike", "killed",
-    "violence", "terrorist", "terrorism", "weapon", "nuclear", "invasion",
-  ],
-  "natural-disaster": [
-    "earthquake", "hurricane", "tornado", "flood", "wildfire", "tsunami",
-    "volcano", "storm", "disaster", "emergency", "evacuation", "cyclone",
-    "drought", "landslide", "blizzard", "heatwave", "climate",
-  ],
-  economy: [
-    "stock", "market", "economy", "trade", "business", "finance", "bank",
-    "inflation", "recession", "gdp", "unemployment", "investment", "crypto",
-    "bitcoin", "dollar", "euro", "tariff", "tax", "budget", "debt",
-  ],
-  technology: [
-    "tech", "ai", "artificial intelligence", "robot", "software", "hardware",
-    "app", "startup", "silicon valley", "cyber", "hack", "data", "digital",
-    "internet", "smartphone", "computer", "algorithm", "machine learning",
-  ],
-  health: [
-    "health", "medical", "hospital", "doctor", "patient", "disease", "virus",
-    "vaccine", "covid", "pandemic", "outbreak", "treatment", "drug", "cancer",
-    "mental health", "healthcare", "surgery", "medicine", "pharmaceutical",
-  ],
+// Check if we're in a browser environment with Supabase available
+function isSupabaseReady(): boolean {
+  return typeof window !== "undefined" && supabase !== null;
+}
+
+const CATEGORY_MAP: Record<string, Category> = {
+  "Politics": "politics",
+  "Business": "economy",
+  "Technology": "technology",
+  "Science": "technology",
+  "Health": "health",
+  "Sports": "politics",
+  "Entertainment": "politics",
+  "World": "conflict",
+  "Crime": "conflict",
+  "Environment": "natural-disaster",
+  "Education": "politics",
+  "Other": "politics",
 };
 
-function categorizeArticle(article: RawArticle): Category {
-  const text = `${article.title} ${article.description || ""} ${article.content || ""}`.toLowerCase();
-  
-  let bestCategory: Category = "politics";
-  let bestScore = 0;
-  
-  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-    let score = 0;
-    for (const keyword of keywords) {
-      if (text.includes(keyword)) {
-        score++;
-      }
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestCategory = category as Category;
-    }
-  }
-  
-  return bestCategory;
+function mapCategory(aiCategory: string | null): Category {
+  if (!aiCategory) return "politics";
+  return CATEGORY_MAP[aiCategory] || "politics";
 }
 
-function generateArticleId(article: RawArticle): string {
-  const titleClean = article.title.toLowerCase().replace(/[^a-z0-9]/g, "");
-  let hash = 0;
-  for (let i = 0; i < titleClean.length; i++) {
-    const char = titleClean.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  const titlePrefix = titleClean.slice(0, 15);
-  const timestamp = new Date(article.publishedAt).getTime();
-  return `${titlePrefix}${Math.abs(hash).toString(36)}-${timestamp}`;
+function stripHtml(html: string | null): string {
+  if (!html) return "";
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function deduplicateArticles(articles: RawArticle[]): RawArticle[] {
-  const seen = new Map<string, RawArticle>();
-  
-  for (const article of articles) {
-    // Create a fingerprint from title
-    const fingerprint = article.title
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, "")
-      .split(/\s+/)
-      .filter((w) => w.length > 3)
-      .slice(0, 5)
-      .sort()
-      .join("");
-    
-    const existing = seen.get(fingerprint);
-    if (!existing) {
-      seen.set(fingerprint, article);
-    } else {
-      // Keep the one with more content
-      const existingLen = (existing.description?.length || 0) + (existing.content?.length || 0);
-      const newLen = (article.description?.length || 0) + (article.content?.length || 0);
-      if (newLen > existingLen) {
-        seen.set(fingerprint, article);
-      }
-    }
-  }
-  
-  return Array.from(seen.values());
+export interface FetchOptions {
+  limit?: number;
+  offset?: number;
+  hoursBack?: number;
 }
 
-async function processArticle(
-  article: RawArticle,
-  geocodingResult: GeocodingResult | null
-): Promise<ProcessedArticle | null> {
-  if (!geocodingResult) {
-    return null;
-  }
-  
-  return {
-    id: generateArticleId(article),
-    headline: article.title,
-    summary: article.description || article.content?.slice(0, 200) || "",
-    content: article.content || article.description || "",
-    location: {
-      name: geocodingResult.name,
-      lat: geocodingResult.lat,
-      lng: geocodingResult.lng,
-      country: geocodingResult.country,
-      region: geocodingResult.region,
-    },
-    category: categorizeArticle(article),
-    timestamp: new Date(article.publishedAt),
-    source: article.source,
-    imageUrl: article.imageUrl || undefined,
-    url: article.url,
-    rawSource: article.source,
-  };
-}
-
-export async function fetchAndProcessNews(): Promise<NewsArticle[]> {
-  const allRawArticles: RawArticle[] = [];
-  const errors: string[] = [];
-  const sourceCounts: Record<string, number> = {};
-
-  console.log("[Beacon] Fetching news from all sources...");
-
-  // Fetch from all sources in parallel
-  const sourceResults = await Promise.allSettled([
-    newsAPISource.fetchHeadlines().catch((e) => {
-      errors.push(`NewsAPI: ${e.message}`);
-      return [];
-    }),
-    gnewsSource.fetchHeadlines().catch((e) => {
-      errors.push(`GNews: ${e.message}`);
-      return [];
-    }),
-    theNewsAPISource.fetchHeadlines().catch((e) => {
-      errors.push(`TheNewsAPI: ${e.message}`);
-      return [];
-    }),
-    mediaStackSource.fetchHeadlines().catch((e) => {
-      errors.push(`MediaStack: ${e.message}`);
-      return [];
-    }),
-  ]);
-
-  const sourceNames = ["NewsAPI", "GNews", "TheNewsAPI", "MediaStack"];
-  
-  for (let i = 0; i < sourceResults.length; i++) {
-    const result = sourceResults[i];
-    const sourceName = sourceNames[i];
-    if (result.status === "fulfilled" && Array.isArray(result.value)) {
-      sourceCounts[sourceName] = result.value.length;
-      allRawArticles.push(...result.value);
-    } else {
-      sourceCounts[sourceName] = 0;
-    }
-  }
-
-  console.log("[Beacon] Articles fetched per source:", sourceCounts);
-
-  if (errors.length > 0) {
-    console.warn("[Beacon] Some news sources had errors:", errors);
-  }
-
-  if (allRawArticles.length === 0) {
-    console.warn("[Beacon] No articles fetched from any source");
+export async function fetchAndProcessNews(options: FetchOptions = {}): Promise<NewsArticle[]> {
+  if (!supabase) {
+    console.error("[Beacon] Supabase client not initialized");
     return [];
   }
 
-  // Sort raw articles by publish date (newest first) before deduplication
-  allRawArticles.sort(
-    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
-  );
+  const { limit = 50, offset = 0, hoursBack = 48 } = options;
+  const cutoffDate = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
 
-  // Log the newest article timestamp
-  if (allRawArticles.length > 0) {
-    const newestArticle = allRawArticles[0];
-    const ageMinutes = Math.round(
-      (Date.now() - new Date(newestArticle.publishedAt).getTime()) / 60000
-    );
-    console.log(`[Beacon] Newest article: "${newestArticle.title.slice(0, 50)}..." (${ageMinutes} min ago)`);
-  }
-
-  // Deduplicate
-  const uniqueArticles = deduplicateArticles(allRawArticles);
-  console.log(`[Beacon] After deduplication: ${uniqueArticles.length} unique articles`);
+  console.log(`[Beacon] Fetching articles from last ${hoursBack} hours...`);
   
-  // Extract locations and geocode
+  const { data: articles, error } = await supabase
+    .from("articles")
+    .select(`
+      *,
+      rss_sources (name, bias_rating, category)
+    `)
+    .gte("published_at", cutoffDate)
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .range(offset, offset + limit - 1);
+  
+  if (error) {
+    console.error("[Beacon] Error fetching articles:", formatSupabaseError(error));
+    return [];
+  }
+  
+  if (!articles || articles.length === 0) {
+    console.warn("[Beacon] No articles found in database");
+    return [];
+  }
+  
+  console.log(`[Beacon] Found ${articles.length} articles, processing...`);
+  
+  const uniqueLocations = [...new Set(
+    (articles as DbArticle[])
+      .map(a => a.location)
+      .filter((loc): loc is string => !!loc && loc !== "unknown")
+  )];
+  
+  const locationMap = batchGeocode(uniqueLocations);
+  
   const processedArticles: NewsArticle[] = [];
   
-  for (const article of uniqueArticles) {
-    const extractedLocation = extractLocation(article);
+  for (const article of articles as DbArticle[]) {
+    const locationResult = article.location ? locationMap.get(article.location) : null;
     
-    if (extractedLocation) {
-      const geocodingResult = await geocode(extractedLocation.text);
-      const processed = await processArticle(article, geocodingResult);
-      
-      if (processed) {
-        processedArticles.push(processed);
-      }
-    }
+    const location = {
+      name: locationResult?.name || article.location || "Unknown",
+      lat: locationResult?.lat || 0,
+      lng: locationResult?.lng || 0,
+      country: locationResult?.country || "Unknown",
+      region: locationResult?.region || "Unknown",
+    };
+
+    const summary = stripHtml(article.summary || article.description || article.content?.slice(0, 300) || null);
+    const content = stripHtml(article.content || article.description || null);
+
+    processedArticles.push({
+      id: article.id,
+      headline: stripHtml(article.title),
+      summary,
+      content,
+      location,
+      category: mapCategory(article.category),
+      timestamp: article.published_at ? new Date(article.published_at) : new Date(article.created_at),
+      source: article.rss_sources?.name || "Unknown",
+      imageUrl: article.image_url || undefined,
+      url: article.article_url,
+      // AI metadata
+      credibilityScore: article.credibility_score || undefined,
+      biasRating: (article.bias_rating as BiasRating) || undefined,
+      sentiment: (article.sentiment as Sentiment) || undefined,
+      urgency: (article.urgency as Urgency) || undefined,
+      readingTime: article.reading_time || undefined,
+      wordCount: article.word_count || undefined,
+      keywords: article.keywords || undefined,
+      entitiesPeople: article.entities_people || undefined,
+      entitiesOrganizations: article.entities_organizations || undefined,
+      entitiesLocations: article.entities_locations || undefined,
+      articleType: article.article_type || undefined,
+      targetAudience: article.target_audience || undefined,
+    });
   }
-
-  console.log(`[Beacon] Processed ${processedArticles.length} articles with valid locations`);
-
-  // Deduplicate by ID to prevent React key conflicts
-  const uniqueById = new Map<string, NewsArticle>();
-  for (const article of processedArticles) {
-    if (!uniqueById.has(article.id)) {
-      uniqueById.set(article.id, article);
-    }
-  }
-  const finalArticles = Array.from(uniqueById.values());
-
-  // Sort by timestamp (newest first)
-  finalArticles.sort(
-    (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
-  );
-
-  console.log(`[Beacon] Final count after ID deduplication: ${finalArticles.length} articles`);
-
-  return finalArticles;
-}
-
-export async function fetchNewsByCategory(category: Category): Promise<NewsArticle[]> {
-  const allRawArticles: RawArticle[] = [];
-
-  const sourceResults = await Promise.allSettled([
-    newsAPISource.fetchByCategory?.(category).catch(() => []) || Promise.resolve([]),
-    gnewsSource.fetchByCategory?.(category).catch(() => []) || Promise.resolve([]),
-    theNewsAPISource.fetchByCategory?.(category).catch(() => []) || Promise.resolve([]),
-  ]);
-
-  for (const result of sourceResults) {
-    if (result.status === "fulfilled" && Array.isArray(result.value)) {
-      allRawArticles.push(...result.value);
-    }
-  }
-
-  const uniqueArticles = deduplicateArticles(allRawArticles);
-  const processedArticles: NewsArticle[] = [];
-
-  for (const article of uniqueArticles) {
-    const extractedLocation = extractLocation(article);
-    
-    if (extractedLocation) {
-      const geocodingResult = await geocode(extractedLocation.text);
-      const processed = await processArticle(article, geocodingResult);
-      
-      if (processed) {
-        // Override category to the requested one
-        processed.category = category;
-        processedArticles.push(processed);
-      }
-    }
-  }
-
-  processedArticles.sort(
-    (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
-  );
-
+  
+  console.log(`[Beacon] Processed ${processedArticles.length} articles`);
+  
   return processedArticles;
 }
 
-// In-memory cache for news
 let cachedNews: NewsArticle[] = [];
 let cacheTimestamp = 0;
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes for fresher news
+const CACHE_DURATION_MS = 2 * 60 * 1000;
 
 export async function getCachedNews(forceRefresh = false): Promise<NewsArticle[]> {
   const now = Date.now();
@@ -305,7 +167,7 @@ export async function getCachedNews(forceRefresh = false): Promise<NewsArticle[]
     return cachedNews;
   } catch (error) {
     console.error("Failed to fetch news:", error);
-    return cachedNews; // Return stale cache on error
+    return cachedNews;
   }
 }
 
@@ -317,3 +179,116 @@ export function isCacheStale(): boolean {
   return Date.now() - cacheTimestamp > CACHE_DURATION_MS;
 }
 
+export async function getArticleCount(): Promise<number> {
+  if (!supabase) return 0;
+  
+  const { count, error } = await supabase
+    .from("articles")
+    .select("*", { count: "exact", head: true });
+  
+  if (error) {
+    console.error("[Beacon] Error getting article count:", formatSupabaseError(error));
+    return 0;
+  }
+  
+  return count || 0;
+}
+
+export async function getSourceStats(): Promise<{ total: number; withErrors: number; lastSync: Date | null }> {
+  if (!supabase) return { total: 0, withErrors: 0, lastSync: null };
+  
+  const { data: sources, error } = await supabase
+    .from("rss_sources")
+    .select("last_fetched_at, fetch_error")
+    .eq("is_active", true);
+  
+  if (error || !sources) {
+    return { total: 0, withErrors: 0, lastSync: null };
+  }
+  
+  const withErrors = sources.filter(s => s.fetch_error !== null).length;
+  const lastFetched = sources
+    .map(s => s.last_fetched_at)
+    .filter(Boolean)
+    .sort()
+    .pop();
+  
+  return {
+    total: sources.length,
+    withErrors,
+    lastSync: lastFetched ? new Date(lastFetched) : null,
+  };
+}
+
+export async function triggerManualSync(): Promise<{ success: boolean; message: string }> {
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/fetch-rss-feeds`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        },
+      }
+    );
+    
+    if (!response.ok) {
+      return { success: false, message: `HTTP ${response.status}` };
+    }
+    
+    const data = await response.json();
+    return {
+      success: true,
+      message: `Fetched ${data.articles_fetched} articles, ${data.articles_new} new`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export interface RssSource {
+  id: number;
+  name: string;
+  category: string | null;
+  bias_rating: string | null;
+}
+
+export async function getAllSources(): Promise<RssSource[]> {
+  // Return empty array during SSR or when Supabase is not configured
+  if (!supabase) {
+    return [];
+  }
+
+  // Additional check for client-side only execution
+  if (typeof window === "undefined") {
+    return [];
+  }
+  
+  try {
+    const { data: sources, error } = await supabase
+      .from("rss_sources")
+      .select("id, name, category, bias_rating")
+      .eq("is_active", true)
+      .order("name");
+    
+    if (error) {
+      // Only log in development to avoid noise in production
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[Beacon] Error fetching sources:", formatSupabaseError(error));
+      }
+      return [];
+    }
+    
+    return sources ?? [];
+  } catch (err) {
+    // Catch any unexpected errors (network issues, etc.)
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[Beacon] Unexpected error fetching sources:", err instanceof Error ? err.message : "Unknown error");
+    }
+    return [];
+  }
+}
