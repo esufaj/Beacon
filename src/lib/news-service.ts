@@ -5,8 +5,8 @@ import type {
   Sentiment,
   Urgency,
 } from "@/types";
-import { supabase, type DbArticle } from "./supabase";
-import { batchGeocode } from "./geocoding";
+import { supabase, type DbArticle } from "@/lib/supabase";
+import { batchGeocode } from "@/lib/geocoding";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 // Helper to format Supabase/Postgrest errors for logging
@@ -114,7 +114,7 @@ export async function fetchAndProcessNews(
     ),
   ];
 
-  const locationMap = batchGeocode(uniqueLocations);
+  const locationMap = await batchGeocode(uniqueLocations);
 
   const processedArticles: NewsArticle[] = [];
 
