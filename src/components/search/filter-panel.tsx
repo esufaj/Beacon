@@ -24,6 +24,7 @@ import {
   type Urgency,
 } from "@/types";
 import { getAllSources, type RssSource } from "@/lib/news-service";
+import { getLocationKey } from "@/lib/location-utils";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -311,7 +312,11 @@ function ActiveFilterPill({
 
 // Main Filter Button Component
 export function FilterButton() {
-  const { filters, setFilters, clearFilters, getUniqueLocations } = useNewsStore();
+  const filters = useNewsStore((state) => state.filters);
+  const setFilters = useNewsStore((state) => state.setFilters);
+  const clearFilters = useNewsStore((state) => state.clearFilters);
+  const articles = useNewsStore((state) => state.articles);
+  
   const [isOpen, setIsOpen] = useState(false);
   const [activeFilterType, setActiveFilterType] = useState<FilterType | null>(null);
   const [allSources, setAllSources] = useState<RssSource[]>([]);
@@ -365,11 +370,18 @@ export function FilterButton() {
     []
   );
 
-  // Location options - get unique locations from the store
-  const locationOptions = useMemo(
-    () => getUniqueLocations().map((loc) => ({ value: loc, label: loc })),
-    [getUniqueLocations]
-  );
+  // Location options - compute from articles directly
+  const locationOptions = useMemo(() => {
+    const locationMap = new Map<string, number>();
+    for (const article of articles) {
+      const key = getLocationKey(article.location);
+      if (!key) continue;
+      locationMap.set(key, (locationMap.get(key) || 0) + 1);
+    }
+    return Array.from(locationMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([loc]) => ({ value: loc, label: loc }));
+  }, [articles]);
 
   const handleFilterSelect = (type: FilterType) => {
     setActiveFilterType(type);

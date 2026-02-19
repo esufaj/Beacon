@@ -39,7 +39,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# Override global gitignore (~/.gitignore_global has lib/) - allow src/lib for Beacon
-!src/lib/
-!src/lib/**
