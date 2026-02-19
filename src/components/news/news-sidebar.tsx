@@ -8,11 +8,9 @@ import { useUIStore } from "@/stores/ui-store";
 import { NewsCard } from "./news-card";
 import { NewsCardSkeletonList } from "./news-card-skeleton";
 import { SearchCombobox } from "@/components/search/search-combobox";
-import { ActiveFilters } from "@/components/search/filter-panel";
 import { BeaconLogo } from "@/components/beacon-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
-import { POLL_INTERVAL_MS } from "@/hooks/use-realtime-news";
 
 export function NewsSidebar() {
   const {
@@ -91,9 +89,6 @@ export function NewsSidebar() {
 
           <SearchCombobox />
 
-          {/* Active filter pills */}
-          <ActiveFilters />
-
           {hasActiveFilter && (
             <div className="mt-4 flex items-center justify-between py-2 px-3 rounded-lg bg-accent/50 border border-border">
               <div className="flex items-center gap-2 text-[13px]">
@@ -165,17 +160,14 @@ export function NewsSidebar() {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-border flex-shrink-0 bg-muted/20">
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <div className="flex items-center text-[11px] text-muted-foreground">
             <div className="flex items-center gap-2">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping-slow absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="font-medium"> Live </span>
+              <span className="font-medium">Live</span>
             </div>
-            <span className="tabular-nums">
-              Updates every {Math.round(POLL_INTERVAL_MS / 60000)}m
-            </span>
           </div>
         </div>
       </aside>

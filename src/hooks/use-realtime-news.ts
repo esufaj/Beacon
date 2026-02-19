@@ -5,7 +5,9 @@ import { useNewsStore } from "@/stores/news-store";
 import { useGlobeStore } from "@/stores/globe-store";
 import { supabase } from "@/lib/supabase";
 import type { NewsArticle, Category, BiasRating, Sentiment, Urgency } from "@/types";
-import { geocode } from "@/lib/geocoding";
+import { geocode, getRegionForCountry } from "@/lib/geocoding";
+import { sanitizeLocationString } from "@/lib/location-utils";
+import { formatSourceName } from "@/lib/source-utils";
 
 interface NewsAPIResponse {
   articles: NewsArticle[];
@@ -14,6 +16,15 @@ interface NewsAPIResponse {
   isStale: boolean;
   error?: string;
 }
+
+type LocationCacheEntry = {
+  location: string;
+  name: string | null;
+  lat: number | null;
+  lng: number | null;
+  country: string | null;
+  region: string | null;
+};
 
 export const POLL_INTERVAL_MS = 2 * 60 * 1000;
 const INITIAL_FETCH_DELAY_MS = 100;
@@ -42,6 +53,9 @@ export function useRealtimeNews() {
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const mountedRef = useRef(true);
   const fetchingRef = useRef(false);
+  const locationCacheRef = useRef(
+    new Map<string, LocationCacheEntry | null>()
+  );
 
   const fetchNews = useCallback(async (useMock = false) => {
     if (fetchingRef.current) return;
@@ -129,9 +143,10 @@ export function useRealtimeNews() {
       return;
     }
 
+    const supabaseClient = supabase;
     console.log("[Beacon] Setting up realtime subscription...");
 
-    const channel = supabase
+    const channel = supabaseClient
       .channel("articles-changes")
       .on(
         "postgres_changes",
@@ -141,7 +156,7 @@ export function useRealtimeNews() {
           table: "articles",
           filter: "ai_processed=eq.true",
         },
-        (payload) => {
+        async (payload) => {
           if (!mountedRef.current) return;
           
           const newRecord = payload.new as {
@@ -168,11 +183,49 @@ export function useRealtimeNews() {
             entities_locations: string[] | null;
             article_type: string | null;
             target_audience: string | null;
+            source_name: string | null;
+            source_type: string | null;
+            ai_processed: boolean | null;
           };
           
           console.log("[Beacon] Realtime update:", newRecord.title?.slice(0, 40));
           
-          const locationResult = newRecord.location ? geocode(newRecord.location) : null;
+          if (newRecord.ai_processed === false) {
+            return;
+          }
+          
+          const cleanedLocation = sanitizeLocationString(newRecord.location);
+          let cachedLocation: LocationCacheEntry | null = null;
+
+          if (cleanedLocation) {
+            const cached = locationCacheRef.current.get(cleanedLocation);
+            if (cached !== undefined) {
+              cachedLocation = cached;
+            } else {
+              const { data: cachedRows, error: cacheError } = await supabaseClient
+                .from("location_cache")
+                .select("location, name, lat, lng, country, region")
+                .eq("location", cleanedLocation)
+                .limit(1);
+
+              if (cacheError) {
+                console.warn("[Beacon] Failed to load cached location", cacheError);
+              }
+
+              cachedLocation = cachedRows?.[0] ?? null;
+              locationCacheRef.current.set(cleanedLocation, cachedLocation);
+            }
+          }
+
+          const locationResult =
+            !cachedLocation && cleanedLocation ? geocode(cleanedLocation) : null;
+          const country =
+            cachedLocation?.country || locationResult?.country || "Unknown";
+          const region =
+            cachedLocation?.region ||
+            locationResult?.region ||
+            (country !== "Unknown" ? getRegionForCountry(country) : null) ||
+            "Unknown";
           
           const newsArticle: NewsArticle = {
             id: newRecord.id,
@@ -180,15 +233,23 @@ export function useRealtimeNews() {
             summary: newRecord.summary || newRecord.description || "",
             content: newRecord.content || newRecord.description || "",
             location: {
-              name: locationResult?.name || newRecord.location || "Unknown",
-              lat: locationResult?.lat || 0,
-              lng: locationResult?.lng || 0,
-              country: locationResult?.country || "Unknown",
-              region: locationResult?.region || "Unknown",
+              name:
+                cachedLocation?.name ||
+                cleanedLocation ||
+                locationResult?.name ||
+                "Unknown",
+              lat: cachedLocation?.lat ?? locationResult?.lat ?? 0,
+              lng: cachedLocation?.lng ?? locationResult?.lng ?? 0,
+              country,
+              region,
             },
             category: CATEGORY_MAP[newRecord.category || ""] || "politics",
             timestamp: new Date(newRecord.published_at || newRecord.created_at),
-            source: "Unknown",
+            source: formatSourceName(
+              newRecord.source_name,
+              newRecord.source_type,
+              newRecord.article_url
+            ),
             imageUrl: newRecord.image_url || undefined,
             url: newRecord.article_url,
             credibilityScore: newRecord.credibility_score || undefined,

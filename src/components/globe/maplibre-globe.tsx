@@ -90,7 +90,7 @@ export function MapLibreGlobe() {
     setZoomLevel,
   } = useGlobeStore();
 
-  const { filterByLocation, clearFilters } = useNewsStore();
+  const { filterByLocation, clearLocationSelection } = useNewsStore();
   const { setSidebarOpen } = useUIStore();
   const { resolvedTheme } = useTheme();
 
@@ -314,8 +314,8 @@ export function MapLibreGlobe() {
 
   const handleMapClick = useCallback(() => {
     setSelectedPoint(null);
-    clearFilters();
-  }, [setSelectedPoint, clearFilters]);
+    clearLocationSelection();
+  }, [setSelectedPoint, clearLocationSelection]);
 
   const handleMarkerClick = useCallback(
     (point: (typeof displayPoints)[0]) => {

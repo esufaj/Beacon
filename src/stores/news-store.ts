@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { NewsArticle, Category, BiasRating, Sentiment, Urgency } from "@/types";
+import { getLocationKey } from "@/lib/location-utils";
 
 export interface FilterState {
   sources: string[];
@@ -31,6 +32,7 @@ interface NewsState {
   filterByRegion: (region: string) => void;
   setFilters: (filters: Partial<FilterState>) => void;
   clearFilters: () => void;
+  clearLocationSelection: () => void;
   getArticlesByLocation: (locationId: string) => NewsArticle[];
   getUniqueSources: () => string[];
   getUniqueLocations: () => string[];
@@ -101,8 +103,8 @@ function applyFilters(articles: NewsArticle[], filters: FilterState, searchQuery
   // Location filter
   if (filters.locations.length > 0) {
     filtered = filtered.filter((a) => {
-      const locationKey = `${a.location.name}, ${a.location.country}`;
-      return filters.locations.includes(locationKey);
+      const locationKey = getLocationKey(a.location);
+      return locationKey ? filters.locations.includes(locationKey) : false;
     });
   }
 
@@ -203,6 +205,16 @@ export const useNewsStore = create<NewsState>((set, get) => ({
     });
   },
 
+  // Clear only location-based selections (keeps filter panel filters intact)
+  clearLocationSelection: () => {
+    const { articles, filters, searchQuery } = get();
+    set({
+      filteredArticles: applyFilters(articles, filters, searchQuery),
+      selectedRegion: null,
+      selectedLocationId: null,
+    });
+  },
+
   getArticlesByLocation: (locationId) => {
     const { articles } = get();
     const normalizedId = normalizeLocationId(locationId);
@@ -223,7 +235,8 @@ export const useNewsStore = create<NewsState>((set, get) => ({
     const locationMap = new Map<string, number>();
     
     for (const article of articles) {
-      const key = `${article.location.name}, ${article.location.country}`;
+      const key = getLocationKey(article.location);
+      if (!key) continue;
       locationMap.set(key, (locationMap.get(key) || 0) + 1);
     }
     

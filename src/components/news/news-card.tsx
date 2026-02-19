@@ -8,6 +8,7 @@ import { useNewsStore } from "@/stores/news-store";
 import { useGlobeStore } from "@/stores/globe-store";
 import type { NewsArticle } from "@/types";
 import { cn } from "@/lib/utils";
+import { formatLocationLabel, isUnknownLocation } from "@/lib/location-utils";
 
 interface NewsCardProps {
   article: NewsArticle;
@@ -40,6 +41,11 @@ export function NewsCard({ article, index, isLast }: NewsCardProps) {
     useGlobeStore();
 
   const handleClick = () => {
+    if (isUnknownLocation(article.location.name)) {
+      setSelectedArticle(article);
+      return;
+    }
+
     const articleLocationId = normalizeLocationId(article.location.name);
 
     // Find the matching point from globe points
@@ -126,7 +132,7 @@ export function NewsCard({ article, index, isLast }: NewsCardProps) {
         <div className="flex items-center gap-2.5 text-[11px]">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <MapPin className="w-3 h-3 text-primary/70" />
-            <span>{article.location.name}</span>
+            <span>{formatLocationLabel(article.location)}</span>
           </div>
           <span className="text-muted-foreground/60">•</span>
           <span className="text-muted-foreground/60">{article.source}</span>

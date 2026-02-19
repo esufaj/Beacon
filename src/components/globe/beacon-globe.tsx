@@ -37,7 +37,7 @@ export function BeaconGlobe() {
     registerResetCallback,
     registerFlyToCallback,
   } = useGlobeStore();
-  const { filterByLocation, clearFilters } = useNewsStore();
+  const { filterByLocation, clearLocationSelection } = useNewsStore();
 
   // Get display points (major cities + news locations) - no clustering
   const displayPoints = useMemo(() => getDisplayPoints(points), [points]);
@@ -157,9 +157,9 @@ export function BeaconGlobe() {
   );
 
   const handleGlobeClick = useCallback(() => {
-    clearFilters();
+    clearLocationSelection();
     setSelectedPoint(null);
-  }, [clearFilters, setSelectedPoint]);
+  }, [clearLocationSelection, setSelectedPoint]);
 
   // Create combined data: bases (large clickable) + beams (thin animated)
   // Include beamPhase to force re-render when animation ticks
