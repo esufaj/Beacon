@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import type { NewsArticle, Category, BiasRating, Sentiment, Urgency } from "@/types";
-import { getLocationKey } from "@/lib/location-utils";
 
 export interface FilterState {
   sources: string[];
@@ -103,8 +102,8 @@ function applyFilters(articles: NewsArticle[], filters: FilterState, searchQuery
   // Location filter
   if (filters.locations.length > 0) {
     filtered = filtered.filter((a) => {
-      const locationKey = getLocationKey(a.location);
-      return locationKey ? filters.locations.includes(locationKey) : false;
+      const locationKey = `${a.location.name}, ${a.location.country}`;
+      return filters.locations.includes(locationKey);
     });
   }
 
@@ -235,8 +234,7 @@ export const useNewsStore = create<NewsState>((set, get) => ({
     const locationMap = new Map<string, number>();
     
     for (const article of articles) {
-      const key = getLocationKey(article.location);
-      if (!key) continue;
+      const key = `${article.location.name}, ${article.location.country}`;
       locationMap.set(key, (locationMap.get(key) || 0) + 1);
     }
     

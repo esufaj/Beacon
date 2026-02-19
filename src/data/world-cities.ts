@@ -408,14 +408,6 @@ export const WORLD_CITIES: WorldCity[] = [
 const cityByNameMap = new Map<string, WorldCity[]>();
 const cityByCountryMap = new Map<string, WorldCity[]>();
 
-const CITY_ALIASES: Record<string, string> = {
-  "new york": "new york city",
-  "washington dc": "washington",
-  "washington d.c": "washington",
-  "d.c": "washington",
-  "dc": "washington",
-};
-
 WORLD_CITIES.forEach((city) => {
   // Index by normalized name
   const existing = cityByNameMap.get(city.nameNormalized) || [];
@@ -444,10 +436,23 @@ WORLD_CITIES.forEach((city) => {
 });
 
 export function findCityByName(name: string, country?: string): WorldCity | null {
-  const normalized = CITY_ALIASES[normalize(name)] || normalize(name);
+  const normalized = normalize(name);
   const candidates = cityByNameMap.get(normalized);
   
   if (!candidates || candidates.length === 0) {
+    // Try partial match
+    for (const [key, cities] of cityByNameMap.entries()) {
+      if (key.includes(normalized) || normalized.includes(key)) {
+        if (country) {
+          const match = cities.find(
+            (c) => c.country.toLowerCase().includes(country.toLowerCase()) ||
+                   c.countryCode.toLowerCase() === country.toLowerCase()
+          );
+          if (match) return match;
+        }
+        return cities[0];
+      }
+    }
     return null;
   }
   
@@ -494,11 +499,6 @@ export function findNearestCity(lat: number, lng: number): WorldCity | null {
 export function getCapitalByCountry(country: string): WorldCity | null {
   const cities = findCitiesByCountry(country);
   return cities.find((c) => c.isCapital) || cities[0] || null;
-}
-
-export function getRegionForCountry(country: string): string | null {
-  const cities = findCitiesByCountry(country);
-  return cities[0]?.region ?? null;
 }
 
 export function getCitiesWithNews(): WorldCity[] {

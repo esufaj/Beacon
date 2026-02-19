@@ -2,7 +2,6 @@ import { create } from "zustand";
 import type { GeoPoint, NewsArticle } from "@/types";
 import { getCitiesWithNews } from "@/data/world-cities";
 import type { MapRef } from "react-map-gl/maplibre";
-import { isUnknownLocation } from "@/lib/location-utils";
 
 type ResetViewCallback = () => void;
 type FlyToCallback = (lat: number, lng: number, zoom?: number) => void;
@@ -211,9 +210,6 @@ export const useGlobeStore = create<GlobeState>((set, get) => ({
 
     if (articles && articles.length > 0) {
       for (const article of articles) {
-        if (isUnknownLocation(article.location.name)) {
-          continue;
-        }
         const locationId = createPointId(article.location.name);
 
         const existingPoint = pointMap.get(locationId);

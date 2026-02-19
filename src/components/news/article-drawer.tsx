@@ -31,7 +31,6 @@ import { CategoryTag } from "./category-tag";
 import { useNewsStore } from "@/stores/news-store";
 import { cn } from "@/lib/utils";
 import type { NewsArticle } from "@/types";
-import { formatLocationLabel } from "@/lib/location-utils";
 
 const BIAS_COLORS: Record<string, { bg: string; text: string }> = {
   left: { bg: "bg-blue-500/15", text: "text-blue-600 dark:text-blue-400" },
@@ -359,33 +358,14 @@ function AIInsights({ article }: { article: NewsArticle }) {
   );
 }
 
-function buildExcerptParagraphs(
-  text: string,
-  maxParagraphs = 3,
-  sentencesPerParagraph = 3
-): string[] {
-  const trimmed = text.trim();
-  if (!trimmed) return [];
-
-  const sentences =
-    trimmed.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((s) => s.trim()) || [];
-
-  if (sentences.length === 0) {
-    return [trimmed];
+// Truncate to ~3-6 sentences
+function getExcerpt(content: string, maxSentences = 4): string {
+  // Split by sentence-ending punctuation followed by space or end
+  const sentences = content.match(/[^.!?]+[.!?]+(?:\s|$)/g) || [];
+  if (sentences.length <= maxSentences) {
+    return sentences.join("").trim();
   }
-
-  const paragraphs: string[] = [];
-  for (let i = 0; i < sentences.length && paragraphs.length < maxParagraphs; i += sentencesPerParagraph) {
-    const chunk = sentences.slice(i, i + sentencesPerParagraph).join(" ");
-    if (chunk) paragraphs.push(chunk);
-  }
-
-  return paragraphs;
-}
-
-function getArticleExcerpt(article: NewsArticle): string[] {
-  const baseText = article.content || article.summary || article.headline;
-  return buildExcerptParagraphs(baseText, 3, 3);
+  return sentences.slice(0, maxSentences).join("").trim();
 }
 
 export function ArticleDrawer() {
@@ -442,7 +422,8 @@ export function ArticleDrawer() {
                   <div className="flex items-center gap-1.5 text-muted-foreground">
                     <MapPin className="w-3.5 h-3.5" />
                     <span>
-                      {formatLocationLabel(selectedArticle.location)}
+                      {selectedArticle.location.name},{" "}
+                      {selectedArticle.location.country}
                     </span>
                   </div>
                   <div className="w-px h-3.5 bg-border" />
@@ -477,11 +458,9 @@ export function ArticleDrawer() {
 
                     {/* Article body */}
                     <div className="pt-1">
-                      <div className="space-y-4 text-foreground/80 text-[15px] leading-[1.75]">
-                        {getArticleExcerpt(selectedArticle).map((paragraph, index) => (
-                          <p key={index}>{paragraph}</p>
-                        ))}
-                      </div>
+                      <p className="text-foreground/80 text-[15px] leading-[1.75]">
+                        {getExcerpt(selectedArticle.content)}
+                      </p>
                     </div>
                   </div>
 
