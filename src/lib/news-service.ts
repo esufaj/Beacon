@@ -1,6 +1,8 @@
 import type { NewsArticle, Category, BiasRating, Sentiment, Urgency } from "@/types";
 import { supabase, type DbArticle } from "./supabase";
-import { batchGeocode } from "./geocoding";
+import { batchGeocode, getRegionForCountry } from "./geocoding";
+import { sanitizeLocationString } from "@/lib/location-utils";
+import { formatSourceName } from "@/lib/source-utils";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 // Helper to format Supabase/Postgrest errors for logging
@@ -75,6 +77,7 @@ export async function fetchAndProcessNews(options: FetchOptions = {}): Promise<N
       *,
       rss_sources (name, bias_rating, category)
     `)
+    .eq("ai_processed", true)
     .gte("published_at", cutoffDate)
     .order("published_at", { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1);
@@ -93,23 +96,47 @@ export async function fetchAndProcessNews(options: FetchOptions = {}): Promise<N
   
   const uniqueLocations = [...new Set(
     (articles as DbArticle[])
-      .map(a => a.location)
-      .filter((loc): loc is string => !!loc && loc !== "unknown")
+      .map(a => sanitizeLocationString(a.location))
+      .filter((loc): loc is string => !!loc)
   )];
-  
-  const locationMap = batchGeocode(uniqueLocations);
+
+  const { data: cachedLocations } = await supabase
+    .from("location_cache")
+    .select("location, name, lat, lng, country, region")
+    .in("location", uniqueLocations);
+
+  const cachedMap = new Map(
+    (cachedLocations ?? []).map((entry) => [entry.location, entry])
+  );
+
+  const locationMap = batchGeocode(
+    uniqueLocations.filter((loc) => !cachedMap.has(loc))
+  );
   
   const processedArticles: NewsArticle[] = [];
   
   for (const article of articles as DbArticle[]) {
-    const locationResult = article.location ? locationMap.get(article.location) : null;
+    const cleanedLocation = sanitizeLocationString(article.location);
+    const cachedLocation = cleanedLocation ? cachedMap.get(cleanedLocation) : null;
+    const locationResult = cleanedLocation ? locationMap.get(cleanedLocation) : null;
     
+    const country =
+      cachedLocation?.country || locationResult?.country || "Unknown";
+    const region =
+      cachedLocation?.region ||
+      locationResult?.region ||
+      (country !== "Unknown" ? getRegionForCountry(country) : null) ||
+      "Unknown";
     const location = {
-      name: locationResult?.name || article.location || "Unknown",
-      lat: locationResult?.lat || 0,
-      lng: locationResult?.lng || 0,
-      country: locationResult?.country || "Unknown",
-      region: locationResult?.region || "Unknown",
+      name:
+        cachedLocation?.name ||
+        cleanedLocation ||
+        locationResult?.name ||
+        "Unknown",
+      lat: cachedLocation?.lat ?? locationResult?.lat ?? 0,
+      lng: cachedLocation?.lng ?? locationResult?.lng ?? 0,
+      country,
+      region,
     };
 
     const summary = stripHtml(article.summary || article.description || article.content?.slice(0, 300) || null);
@@ -123,7 +150,11 @@ export async function fetchAndProcessNews(options: FetchOptions = {}): Promise<N
       location,
       category: mapCategory(article.category),
       timestamp: article.published_at ? new Date(article.published_at) : new Date(article.created_at),
-      source: article.rss_sources?.name || "Unknown",
+      source: formatSourceName(
+        article.source_name || article.rss_sources?.name,
+        article.source_type,
+        article.article_url
+      ),
       imageUrl: article.image_url || undefined,
       url: article.article_url,
       // AI metadata
@@ -184,7 +215,8 @@ export async function getArticleCount(): Promise<number> {
   
   const { count, error } = await supabase
     .from("articles")
-    .select("*", { count: "exact", head: true });
+    .select("*", { count: "exact", head: true })
+    .eq("ai_processed", true);
   
   if (error) {
     console.error("[Beacon] Error getting article count:", formatSupabaseError(error));

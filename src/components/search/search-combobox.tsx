@@ -163,59 +163,60 @@ export function SearchCombobox() {
   };
 
   return (
-    <div className="relative w-full max-w-sm">
-      <div
-        className={cn(
-          "group flex items-center gap-2.5 h-10 px-3.5 rounded-xl",
-          "bg-background/60 backdrop-blur-sm",
-          "border border-border/60",
-          "transition-all duration-200 ease-out",
-          "hover:border-border hover:bg-background/80",
-          open &&
-            "border-primary/40 bg-background shadow-sm ring-2 ring-primary/10"
-        )}
-      >
-        <Search
+    <div className="flex items-center gap-2 w-full">
+      {/* Search input container */}
+      <div className="relative flex-1 min-w-0">
+        <div
           className={cn(
-            "w-4 h-4 shrink-0 transition-colors duration-200",
-            open ? "text-primary" : "text-muted-foreground"
+            "group flex items-center gap-2 h-8 px-2.5 rounded-lg",
+            "bg-background/60 backdrop-blur-sm",
+            "border border-border/60",
+            "transition-all duration-200 ease-out",
+            "hover:border-border hover:bg-background/80",
+            open &&
+              "border-primary/40 bg-background shadow-sm ring-2 ring-primary/10"
           )}
-        />
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Search articles..."
-          value={inputValue}
-          onChange={handleInputChange}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 200)}
-          onKeyDown={handleKeyDown}
-          className={cn(
-            "flex-1 bg-transparent text-sm text-foreground",
-            "placeholder:text-muted-foreground/70",
-            "outline-none border-none",
-            "selection:bg-primary/20"
-          )}
-        />
-        <AnimatePresence>
-          {inputValue && (
-            <motion.button
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ duration: 0.15 }}
-              onClick={handleClear}
-              className="p-1 hover:bg-muted rounded-md transition-colors"
-            >
-              <X className="w-3.5 h-3.5 text-muted-foreground" />
-            </motion.button>
-          )}
-        </AnimatePresence>
-
-        {/* Filter button */}
-        <div className="h-5 w-px bg-border/60 mx-0.5" />
-        <FilterButton />
-      </div>
+        >
+          <Search
+            className={cn(
+              "w-3.5 h-3.5 shrink-0 transition-colors duration-200",
+              open ? "text-primary" : "text-muted-foreground"
+            )}
+          />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Search articles..."
+            value={inputValue}
+            onChange={handleInputChange}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 200)}
+            onKeyDown={handleKeyDown}
+            className={cn(
+              "flex-1 min-w-0 bg-transparent text-sm text-foreground",
+              "placeholder:text-muted-foreground/70",
+              "outline-none border-none",
+              "selection:bg-primary/20"
+            )}
+          />
+          {/* Reserve space for X button to prevent layout shift */}
+          <div className="w-5 h-5 shrink-0 flex items-center justify-center">
+            <AnimatePresence>
+              {inputValue && (
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.15 }}
+                  onClick={handleClear}
+                  className="p-0.5 hover:bg-muted rounded transition-colors"
+                >
+                  <X className="w-3.5 h-3.5 text-muted-foreground" />
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
 
       <AnimatePresence>
         {open && inputValue.length >= 2 && (
@@ -296,6 +297,10 @@ export function SearchCombobox() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
+
+      {/* Filter button - outside search bar */}
+      <FilterButton />
     </div>
   );
 }

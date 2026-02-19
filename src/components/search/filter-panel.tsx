@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   X,
   Check,
@@ -24,6 +24,7 @@ import {
   type Urgency,
 } from "@/types";
 import { getAllSources, type RssSource } from "@/lib/news-service";
+import { getLocationKey } from "@/lib/location-utils";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -311,7 +312,11 @@ function ActiveFilterPill({
 
 // Main Filter Button Component
 export function FilterButton() {
-  const { filters, setFilters, clearFilters } = useNewsStore();
+  const filters = useNewsStore((state) => state.filters);
+  const setFilters = useNewsStore((state) => state.setFilters);
+  const clearFilters = useNewsStore((state) => state.clearFilters);
+  const articles = useNewsStore((state) => state.articles);
+  
   const [isOpen, setIsOpen] = useState(false);
   const [activeFilterType, setActiveFilterType] = useState<FilterType | null>(null);
   const [allSources, setAllSources] = useState<RssSource[]>([]);
@@ -365,12 +370,18 @@ export function FilterButton() {
     []
   );
 
-  // Location options - get unique locations from the store
-  const { getUniqueLocations } = useNewsStore();
-  const locationOptions = useMemo(
-    () => getUniqueLocations().map((loc) => ({ value: loc, label: loc })),
-    [getUniqueLocations]
-  );
+  // Location options - compute from articles directly
+  const locationOptions = useMemo(() => {
+    const locationMap = new Map<string, number>();
+    for (const article of articles) {
+      const key = getLocationKey(article.location);
+      if (!key) continue;
+      locationMap.set(key, (locationMap.get(key) || 0) + 1);
+    }
+    return Array.from(locationMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([loc]) => ({ value: loc, label: loc }));
+  }, [articles]);
 
   const handleFilterSelect = (type: FilterType) => {
     setActiveFilterType(type);
@@ -458,15 +469,23 @@ export function FilterButton() {
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "flex items-center gap-1.5 h-7 px-2 rounded-md transition-colors",
-            activeFilterCount > 0
-              ? "bg-primary/10 text-primary hover:bg-primary/15"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            "flex items-center justify-center h-8 w-8 rounded-lg shrink-0",
+            "bg-background/60 backdrop-blur-sm",
+            "border border-border/60",
+            "transition-all duration-200 ease-out",
+            "hover:border-border hover:bg-background/80",
+            "relative",
+            activeFilterCount > 0 && "border-primary/40 bg-primary/5"
           )}
         >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
+          <SlidersHorizontal className={cn(
+            "w-3.5 h-3.5",
+            activeFilterCount > 0 ? "text-primary" : "text-muted-foreground"
+          )} />
           {activeFilterCount > 0 && (
-            <span className="text-xs font-medium">{activeFilterCount}</span>
+            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-semibold text-primary-foreground bg-primary rounded-full">
+              {activeFilterCount}
+            </span>
           )}
         </button>
       </PopoverTrigger>
@@ -476,27 +495,30 @@ export function FilterButton() {
         sideOffset={8}
       >
         {activeFilterType && (
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+            <span className="text-xs font-medium">
+              {FILTER_CONFIGS.find((c) => c.id === activeFilterType)?.label}
+            </span>
             <button
               onClick={handleBack}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
-              ← Back
+              Back →
             </button>
-            <span className="text-xs font-medium">
-              {FILTER_CONFIGS.find((c) => c.id === activeFilterType)?.label}
-            </span>
           </div>
         )}
         {renderFilterContent()}
-        {activeFilterCount > 0 && !activeFilterType && (
+        {activeFilterCount > 0 && (
           <>
             <CommandSeparator />
             <div className="p-2">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={clearFilters}
+                onClick={() => {
+                  clearFilters();
+                  setActiveFilterType(null);
+                }}
                 className="w-full h-8 text-xs text-muted-foreground hover:text-foreground"
               >
                 Clear all filters

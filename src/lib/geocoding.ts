@@ -2,8 +2,10 @@ import {
   findCityByName,
   findNearestCity,
   getCapitalByCountry,
+  getRegionForCountry,
   type WorldCity,
 } from "@/data/world-cities";
+import { sanitizeLocationString } from "@/lib/location-utils";
 
 export interface GeocodingResult {
   lat: number;
@@ -42,16 +44,17 @@ function normalizeLocation(text: string): string {
 }
 
 export function geocode(locationText: string): GeocodingResult | null {
-  if (!locationText || locationText.trim().length === 0 || locationText.toLowerCase() === "unknown") {
+  const cleaned = sanitizeLocationString(locationText);
+  if (!cleaned) {
     return null;
   }
   
-  const cacheKey = locationText.toLowerCase();
+  const cacheKey = cleaned.toLowerCase();
   if (geocodeCache.has(cacheKey)) {
     return geocodeCache.get(cacheKey) || null;
   }
   
-  const normalized = normalizeLocation(locationText);
+  const normalized = normalizeLocation(cleaned);
   const parts = normalized.split(",").map((p) => p.trim());
   const cityName = parts[0];
   const stateOrCountry = parts[1];
@@ -119,6 +122,8 @@ export function findClosestKnownLocation(
   
   return worldCityToResult(nearest, "medium");
 }
+
+export { getRegionForCountry };
 
 
 
