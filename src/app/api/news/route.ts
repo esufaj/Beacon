@@ -6,7 +6,12 @@ export const revalidate = 0;
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const forceRefresh = searchParams.get("refresh") === "true";
+    const forceRefresh =
+      searchParams.get("refresh") === "true" ||
+      searchParams.get("forceRefresh") === "true";
+    const offset = Number(searchParams.get("offset") || "0");
+    const limit = Number(searchParams.get("limit") || "50");
+    const hoursBack = Number(searchParams.get("hoursBack") || "24");
 
     const hasSupabaseUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
     const hasSupabaseKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -23,24 +28,27 @@ export async function GET(request: Request) {
     }
 
     const {
-      getCachedNews,
-      getCacheAge,
-      isCacheStale,
+      getNewsPage,
       getArticleCount,
       getSourceStats,
     } = await import("@/lib/news-service");
 
-    const [articles, articleCount, sourceStats] = await Promise.all([
-      getCachedNews(forceRefresh),
+    const [page, articleCount, sourceStats] = await Promise.all([
+      getNewsPage({ offset, limit, hoursBack, forceRefresh }),
       getArticleCount(),
       getSourceStats(),
     ]);
 
     return NextResponse.json({
-      articles,
+      articles: page.articles,
       source: "supabase",
-      cacheAge: getCacheAge(),
-      isStale: isCacheStale(),
+      cacheAge: page.cacheAgeMs,
+      isStale: page.isStale,
+      cacheLayer: page.cacheLayer,
+      totalCount: page.totalCount,
+      hasMore: page.hasMore,
+      nextOffset: page.nextOffset,
+      maxPublishedAt: page.maxPublishedAt,
       stats: {
         totalArticles: articleCount,
         totalSources: sourceStats.total,

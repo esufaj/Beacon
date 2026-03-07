@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useMemo, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Globe2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNewsStore } from "@/stores/news-store";
@@ -11,18 +13,21 @@ import { SearchCombobox } from "@/components/search/search-combobox";
 import { BeaconLogo } from "@/components/beacon-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export function NewsSidebar() {
+  const CARD_ROW_GAP_PX = 8;
+  const LIST_EDGE_PADDING_PX = 10;
   const {
     filteredArticles,
-    selectedLocationId,
-    selectedRegion,
     clearFilters,
     isLoading,
+    backgroundLoad,
+    newArticleIds,
+    requestLoadMore,
   } = useNewsStore();
 
   const {
-    selectedPoint,
     setSelectedPoint,
     setAutoRotating,
     resetView,
@@ -30,8 +35,40 @@ export function NewsSidebar() {
   } = useGlobeStore();
 
   const { isSidebarOpen, setSidebarOpen } = useUIStore();
+  const isMobile = useIsMobile();
+  const parentRef = useRef<HTMLDivElement | null>(null);
+  const newIdsSet = useMemo(() => new Set(newArticleIds), [newArticleIds]);
 
-  const hasActiveFilter = selectedLocationId || selectedRegion;
+  const rowVirtualizer = useVirtualizer({
+    count: filteredArticles.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 154,
+    getItemKey: (index) => filteredArticles[index]?.id ?? index,
+    paddingStart: LIST_EDGE_PADDING_PX,
+    paddingEnd: LIST_EDGE_PADDING_PX,
+    overscan: 8,
+  });
+  const virtualItems = rowVirtualizer.getVirtualItems();
+
+  useEffect(() => {
+    if (virtualItems.length === 0) return;
+    const lastItem = virtualItems[virtualItems.length - 1];
+    const nearEnd = lastItem.index >= filteredArticles.length - 12;
+
+    if (
+      nearEnd &&
+      backgroundLoad.hasMore &&
+      !backgroundLoad.isBackgroundLoading
+    ) {
+      requestLoadMore();
+    }
+  }, [
+    backgroundLoad.hasMore,
+    backgroundLoad.isBackgroundLoading,
+    filteredArticles.length,
+    requestLoadMore,
+    virtualItems,
+  ]);
 
   const handleClearFilter = () => {
     clearFilters();
@@ -58,7 +95,7 @@ export function NewsSidebar() {
 
       <aside
         className={cn(
-          "w-[340px] h-screen flex flex-col border-r border-border",
+          "w-[340px] h-[100dvh] flex flex-col border-r border-border",
           "bg-card",
           "fixed lg:relative z-50",
           "transition-all duration-300 ease-[cubic-bezier(0.16, 1, 0.3, 1)]",
@@ -88,27 +125,6 @@ export function NewsSidebar() {
           </div>
 
           <SearchCombobox />
-
-          {hasActiveFilter && (
-            <div className="mt-4 flex items-center justify-between py-2 px-3 rounded-lg bg-accent/50 border border-border">
-              <div className="flex items-center gap-2 text-[13px]">
-                <Globe2 className="w-3.5 h-3.5 text-primary" />
-                <span className="text-muted-foreground">Filtering:</span>
-                <span className="text-foreground font-medium">
-                  {selectedPoint?.name || selectedRegion || selectedLocationId}
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClearFilter}
-                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md"
-              >
-                <X className="w-3 h-3 mr-1" />
-                Clear
-              </Button>
-            </div>
-          )}
         </div>
 
         {/* Section header */}
@@ -122,7 +138,7 @@ export function NewsSidebar() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div ref={parentRef} className="flex-1 overflow-y-auto custom-scrollbar">
           {isLoading && filteredArticles.length === 0 ? (
             <NewsCardSkeletonList count={6} />
           ) : filteredArticles.length === 0 ? (
@@ -145,22 +161,40 @@ export function NewsSidebar() {
               </Button>
             </div>
           ) : (
-            <div className="py-1">
-              {filteredArticles.map((article, index) => (
-                <NewsCard
-                  key={article.id}
-                  article={article}
-                  index={index}
-                  isLast={index === filteredArticles.length - 1}
-                />
-              ))}
+            <div
+              className="relative"
+              style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+            >
+              {virtualItems.map((virtualRow) => {
+                const article = filteredArticles[virtualRow.index];
+                if (!article) return null;
+                return (
+                  <div
+                    key={article.id}
+                    data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                    className="absolute left-0 top-0 w-full px-2"
+                    style={{
+                      transform: `translateY(${virtualRow.start}px)`,
+                      paddingBottom: `${CARD_ROW_GAP_PX}px`,
+                    }}
+                  >
+                    <NewsCard
+                      article={article}
+                      index={virtualRow.index}
+                      isMobile={isMobile}
+                      isNew={newIdsSet.has(article.id)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-border flex-shrink-0 bg-muted/20">
-          <div className="flex items-center text-[11px] text-muted-foreground">
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
             <div className="flex items-center gap-2">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping-slow absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
@@ -168,6 +202,14 @@ export function NewsSidebar() {
               </span>
               <span className="font-medium">Live</span>
             </div>
+            {backgroundLoad.isBackgroundLoading && (
+              <span className="text-[10px] text-muted-foreground tabular-nums">
+                Loading {backgroundLoad.loadedCount}
+                {backgroundLoad.estimatedTotal
+                  ? `/${backgroundLoad.estimatedTotal}`
+                  : ""}
+              </span>
+            )}
           </div>
         </div>
       </aside>

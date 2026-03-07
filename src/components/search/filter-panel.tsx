@@ -23,7 +23,7 @@ import {
   type Sentiment,
   type Urgency,
 } from "@/types";
-import { getAllSources, type RssSource } from "@/lib/news-service";
+import { getAllSources, type RssSource } from "@/lib/sources-service";
 import { getLocationKey } from "@/lib/location-utils";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
@@ -510,7 +509,7 @@ export function FilterButton() {
         {renderFilterContent()}
         {activeFilterCount > 0 && (
           <>
-            <CommandSeparator />
+            <div className="h-px bg-border" />
             <div className="p-2">
               <Button
                 variant="ghost"

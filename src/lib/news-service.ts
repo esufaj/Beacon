@@ -1,11 +1,46 @@
-import type { NewsArticle, Category, BiasRating, Sentiment, Urgency } from "@/types";
-import { supabase, type DbArticle } from "./supabase";
+import "server-only";
+
+import type { PostgrestError } from "@supabase/supabase-js";
+import type { BiasRating, Category, NewsArticle, Sentiment, Urgency } from "@/types";
 import { batchGeocode, getRegionForCountry } from "./geocoding";
+import { supabase, type DbArticle } from "./supabase";
 import { sanitizeLocationString } from "@/lib/location-utils";
 import { formatSourceName } from "@/lib/source-utils";
-import type { PostgrestError } from "@supabase/supabase-js";
+import {
+  clearCachedWindow,
+  getCachedPage,
+  getMemoryCacheAgeMs,
+  setCachedWindow,
+  type CacheLayer,
+  upsertCachedArticle,
+} from "@/lib/cache/article-cache";
 
-// Helper to format Supabase/Postgrest errors for logging
+const CATEGORY_MAP: Record<string, Category> = {
+  Politics: "politics",
+  Business: "economy",
+  Technology: "technology",
+  Science: "science",
+  Health: "health",
+  Sports: "sports",
+  Entertainment: "entertainment",
+  World: "conflict",
+  Crime: "crime",
+  Environment: "environment",
+  Education: "education",
+  Other: "politics",
+};
+
+const DB_BATCH_SIZE = 500;
+const DEFAULT_PAGE_SIZE = 50;
+const DEFAULT_HOURS_BACK = 24;
+
+let lastCacheAgeMs = 0;
+let lastIsStale = false;
+const windowRebuilds = new Map<
+  number,
+  Promise<{ articles: NewsArticle[]; cacheLayer: CacheLayer }>
+>();
+
 function formatSupabaseError(error: PostgrestError): string {
   const parts: string[] = [];
   if (error.message) parts.push(error.message);
@@ -14,26 +49,6 @@ function formatSupabaseError(error: PostgrestError): string {
   if (error.hint) parts.push(`[hint: ${error.hint}]`);
   return parts.length > 0 ? parts.join(" ") : "Unknown error";
 }
-
-// Check if we're in a browser environment with Supabase available
-function isSupabaseReady(): boolean {
-  return typeof window !== "undefined" && supabase !== null;
-}
-
-const CATEGORY_MAP: Record<string, Category> = {
-  "Politics": "politics",
-  "Business": "economy",
-  "Technology": "technology",
-  "Science": "technology",
-  "Health": "health",
-  "Sports": "politics",
-  "Entertainment": "politics",
-  "World": "conflict",
-  "Crime": "conflict",
-  "Environment": "natural-disaster",
-  "Education": "politics",
-  "Other": "politics",
-};
 
 function mapCategory(aiCategory: string | null): Category {
   if (!aiCategory) return "politics";
@@ -60,96 +75,148 @@ export interface FetchOptions {
   hoursBack?: number;
 }
 
-export async function fetchAndProcessNews(options: FetchOptions = {}): Promise<NewsArticle[]> {
+export interface NewsPageOptions {
+  offset?: number;
+  limit?: number;
+  hoursBack?: number;
+  forceRefresh?: boolean;
+}
+
+export interface NewsPageResult {
+  articles: NewsArticle[];
+  totalCount: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+  cacheLayer: CacheLayer;
+  isStale: boolean;
+  cacheAgeMs: number;
+  maxPublishedAt: string | null;
+}
+
+async function loadRawArticlesPageFromDb({
+  offset,
+  limit,
+  hoursBack,
+}: Required<FetchOptions>): Promise<{ data: DbArticle[]; totalCount: number }> {
   if (!supabase) {
-    console.error("[Beacon] Supabase client not initialized");
-    return [];
+    return { data: [], totalCount: 0 };
   }
 
-  const { limit = 50, offset = 0, hoursBack = 48 } = options;
-  const cutoffDate = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
+  const cutoffDate = new Date(
+    Date.now() - hoursBack * 60 * 60 * 1000
+  ).toISOString();
 
-  console.log(`[Beacon] Fetching articles from last ${hoursBack} hours...`);
-  
-  const { data: articles, error } = await supabase
+  const { data, count, error } = await supabase
     .from("articles")
-    .select(`
+    .select(
+      `
       *,
       rss_sources (name, bias_rating, category)
-    `)
+    `,
+      { count: "exact" }
+    )
     .eq("ai_processed", true)
     .gte("published_at", cutoffDate)
     .order("published_at", { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1);
-  
+
   if (error) {
-    console.error("[Beacon] Error fetching articles:", formatSupabaseError(error));
-    return [];
+    throw new Error(formatSupabaseError(error));
   }
-  
-  if (!articles || articles.length === 0) {
-    console.warn("[Beacon] No articles found in database");
-    return [];
+
+  return { data: (data ?? []) as DbArticle[], totalCount: count ?? 0 };
+}
+
+async function loadRawArticlesWindowFromDb(hoursBack: number): Promise<DbArticle[]> {
+  if (!supabase) return [];
+
+  const result: DbArticle[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data } = await loadRawArticlesPageFromDb({
+      offset,
+      limit: DB_BATCH_SIZE,
+      hoursBack,
+    });
+    result.push(...data);
+    if (data.length < DB_BATCH_SIZE) break;
+    offset += DB_BATCH_SIZE;
   }
-  
-  console.log(`[Beacon] Found ${articles.length} articles, processing...`);
-  
-  const uniqueLocations = [...new Set(
-    (articles as DbArticle[])
-      .map(a => sanitizeLocationString(a.location))
-      .filter((loc): loc is string => !!loc)
-  )];
 
-  const { data: cachedLocations } = await supabase
-    .from("location_cache")
-    .select("location, name, lat, lng, country, region")
-    .in("location", uniqueLocations);
+  return result;
+}
 
-  const cachedMap = new Map(
-    (cachedLocations ?? []).map((entry) => [entry.location, entry])
+async function processDbArticles(articles: DbArticle[]): Promise<NewsArticle[]> {
+  if (articles.length === 0) return [];
+
+  const uniqueLocations = [
+    ...new Set(
+      articles
+        .map((article) => sanitizeLocationString(article.location))
+        .filter((location): location is string => Boolean(location))
+    ),
+  ];
+
+  const cachedLocationsMap = new Map<
+    string,
+    { name: string | null; lat: number | null; lng: number | null; country: string | null; region: string | null }
+  >();
+
+  if (supabase && uniqueLocations.length > 0) {
+    const { data: cachedLocations } = await supabase
+      .from("location_cache")
+      .select("location, name, lat, lng, country, region")
+      .in("location", uniqueLocations);
+
+    for (const entry of cachedLocations ?? []) {
+      cachedLocationsMap.set(entry.location, entry);
+    }
+  }
+
+  const geocodedMap = batchGeocode(
+    uniqueLocations.filter((location) => !cachedLocationsMap.has(location))
   );
 
-  const locationMap = batchGeocode(
-    uniqueLocations.filter((loc) => !cachedMap.has(loc))
-  );
-  
-  const processedArticles: NewsArticle[] = [];
-  
-  for (const article of articles as DbArticle[]) {
+  const processed = articles.map((article) => {
     const cleanedLocation = sanitizeLocationString(article.location);
-    const cachedLocation = cleanedLocation ? cachedMap.get(cleanedLocation) : null;
-    const locationResult = cleanedLocation ? locationMap.get(cleanedLocation) : null;
-    
+    const cachedLocation = cleanedLocation
+      ? cachedLocationsMap.get(cleanedLocation)
+      : null;
+    const geocodedLocation = cleanedLocation
+      ? geocodedMap.get(cleanedLocation)
+      : null;
+
     const country =
-      cachedLocation?.country || locationResult?.country || "Unknown";
+      cachedLocation?.country || geocodedLocation?.country || "Unknown";
     const region =
       cachedLocation?.region ||
-      locationResult?.region ||
+      geocodedLocation?.region ||
       (country !== "Unknown" ? getRegionForCountry(country) : null) ||
       "Unknown";
-    const location = {
-      name:
-        cachedLocation?.name ||
-        cleanedLocation ||
-        locationResult?.name ||
-        "Unknown",
-      lat: cachedLocation?.lat ?? locationResult?.lat ?? 0,
-      lng: cachedLocation?.lng ?? locationResult?.lng ?? 0,
-      country,
-      region,
-    };
 
-    const summary = stripHtml(article.summary || article.description || article.content?.slice(0, 300) || null);
-    const content = stripHtml(article.content || article.description || null);
-
-    processedArticles.push({
+    return {
       id: article.id,
       headline: stripHtml(article.title),
-      summary,
-      content,
-      location,
+      summary: stripHtml(
+        article.summary || article.description || article.content?.slice(0, 300) || null
+      ),
+      content: stripHtml(article.content || article.description || null),
+      location: {
+        name:
+          cachedLocation?.name ||
+          cleanedLocation ||
+          geocodedLocation?.name ||
+          "Unknown",
+        lat: cachedLocation?.lat ?? geocodedLocation?.lat ?? 0,
+        lng: cachedLocation?.lng ?? geocodedLocation?.lng ?? 0,
+        country,
+        region,
+      },
       category: mapCategory(article.category),
-      timestamp: article.published_at ? new Date(article.published_at) : new Date(article.created_at),
+      timestamp: article.published_at
+        ? new Date(article.published_at)
+        : new Date(article.created_at),
       source: formatSourceName(
         article.source_name || article.rss_sources?.name,
         article.source_type,
@@ -157,7 +224,6 @@ export async function fetchAndProcessNews(options: FetchOptions = {}): Promise<N
       ),
       imageUrl: article.image_url || undefined,
       url: article.article_url,
-      // AI metadata
       credibilityScore: article.credibility_score || undefined,
       biasRating: (article.bias_rating as BiasRating) || undefined,
       sentiment: (article.sentiment as Sentiment) || undefined,
@@ -170,44 +236,177 @@ export async function fetchAndProcessNews(options: FetchOptions = {}): Promise<N
       entitiesLocations: article.entities_locations || undefined,
       articleType: article.article_type || undefined,
       targetAudience: article.target_audience || undefined,
-    });
-  }
-  
-  console.log(`[Beacon] Processed ${processedArticles.length} articles`);
-  
-  return processedArticles;
+    } satisfies NewsArticle;
+  });
+
+  return processed.sort(
+    (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+  );
 }
 
-let cachedNews: NewsArticle[] = [];
-let cacheTimestamp = 0;
-const CACHE_DURATION_MS = 2 * 60 * 1000;
+async function loadAndCacheWindow(hoursBack: number): Promise<{
+  articles: NewsArticle[];
+  cacheLayer: CacheLayer;
+}> {
+  const raw = await loadRawArticlesWindowFromDb(hoursBack);
+  const articles = await processDbArticles(raw);
+  const cacheLayer = await setCachedWindow(articles);
+  return { articles, cacheLayer };
+}
+
+function getOrStartWindowRebuild(hoursBack: number): Promise<{
+  articles: NewsArticle[];
+  cacheLayer: CacheLayer;
+}> {
+  const existing = windowRebuilds.get(hoursBack);
+  if (existing) return existing;
+
+  const rebuild = (async () => {
+    await clearCachedWindow();
+    return loadAndCacheWindow(hoursBack);
+  })().finally(() => {
+    windowRebuilds.delete(hoursBack);
+  });
+
+  windowRebuilds.set(hoursBack, rebuild);
+  return rebuild;
+}
+
+/**
+ * Loading lifecycle:
+ * 1) Try Redis (or memory fallback) for an offset/limit page in the 24h window.
+ * 2) On cache miss/stale force-refresh, rebuild the 24h cache from Supabase.
+ * 3) Always return deterministic `published_at DESC` pages with metadata for
+ *    progressive background loading and realtime cursor gating.
+ */
+export async function getNewsPage(
+  options: NewsPageOptions = {}
+): Promise<NewsPageResult> {
+  const offset = Math.max(0, options.offset ?? 0);
+  const limit = Math.max(1, Math.min(200, options.limit ?? DEFAULT_PAGE_SIZE));
+  const hoursBack = Math.max(1, options.hoursBack ?? DEFAULT_HOURS_BACK);
+  const forceRefresh = options.forceRefresh ?? false;
+
+  if (forceRefresh) {
+    await clearCachedWindow();
+  }
+
+  const cachedPage = await getCachedPage(offset, limit);
+  const canUseCache = cachedPage.cacheHit && !forceRefresh;
+  const cacheLooksCorrupt =
+    cachedPage.totalCount > 0 && cachedPage.articles.length === 0;
+
+  if (
+    canUseCache &&
+    !cacheLooksCorrupt &&
+    (!cachedPage.isStale || cachedPage.totalCount > 0)
+  ) {
+    lastCacheAgeMs = cachedPage.cacheAgeMs;
+    lastIsStale = cachedPage.isStale;
+    return {
+      articles: cachedPage.articles,
+      totalCount: cachedPage.totalCount,
+      hasMore: offset + limit < cachedPage.totalCount,
+      nextOffset:
+        offset + limit < cachedPage.totalCount ? offset + limit : null,
+      cacheLayer: cachedPage.cacheLayer,
+      isStale: cachedPage.isStale,
+      cacheAgeMs: cachedPage.cacheAgeMs,
+      maxPublishedAt: cachedPage.maxPublishedAt,
+    };
+  }
+
+  if (cacheLooksCorrupt && !windowRebuilds.has(hoursBack)) {
+    console.warn("[Beacon] Cache looked corrupt, rebuilding from DB window");
+  }
+
+  try {
+    const { articles, cacheLayer } = await getOrStartWindowRebuild(hoursBack);
+    const page = articles.slice(offset, offset + limit);
+    lastCacheAgeMs = getMemoryCacheAgeMs();
+    lastIsStale = false;
+    return {
+      articles: page,
+      totalCount: articles.length,
+      hasMore: offset + limit < articles.length,
+      nextOffset: offset + limit < articles.length ? offset + limit : null,
+      cacheLayer: cacheLayer === "memory" ? "db" : cacheLayer,
+      isStale: false,
+      cacheAgeMs: lastCacheAgeMs,
+      maxPublishedAt: articles[0]?.timestamp.toISOString() ?? null,
+    };
+  } catch (error) {
+    console.error("[Beacon] Failed loading DB window, returning cache fallback", error);
+    lastCacheAgeMs = cachedPage.cacheAgeMs;
+    lastIsStale = true;
+    return {
+      articles: cachedPage.articles,
+      totalCount: cachedPage.totalCount,
+      hasMore: offset + limit < cachedPage.totalCount,
+      nextOffset:
+        offset + limit < cachedPage.totalCount ? offset + limit : null,
+      cacheLayer: cachedPage.cacheLayer,
+      isStale: true,
+      cacheAgeMs: cachedPage.cacheAgeMs,
+      maxPublishedAt: cachedPage.maxPublishedAt,
+    };
+  }
+}
+
+export async function fetchAndProcessNews(
+  options: FetchOptions = {}
+): Promise<NewsArticle[]> {
+  const page = await getNewsPage({
+    offset: options.offset,
+    limit: options.limit,
+    hoursBack: options.hoursBack,
+  });
+  return page.articles;
+}
 
 export async function getCachedNews(forceRefresh = false): Promise<NewsArticle[]> {
-  const now = Date.now();
-  
-  if (!forceRefresh && cachedNews.length > 0 && now - cacheTimestamp < CACHE_DURATION_MS) {
-    return cachedNews;
-  }
-  
-  try {
-    const news = await fetchAndProcessNews();
-    if (news.length > 0) {
-      cachedNews = news;
-      cacheTimestamp = now;
-    }
-    return cachedNews;
-  } catch (error) {
-    console.error("Failed to fetch news:", error);
-    return cachedNews;
-  }
+  const page = await getNewsPage({
+    offset: 0,
+    limit: DEFAULT_PAGE_SIZE,
+    hoursBack: DEFAULT_HOURS_BACK,
+    forceRefresh,
+  });
+  return page.articles;
 }
 
 export function getCacheAge(): number {
-  return Date.now() - cacheTimestamp;
+  return lastCacheAgeMs;
 }
 
 export function isCacheStale(): boolean {
-  return Date.now() - cacheTimestamp > CACHE_DURATION_MS;
+  return lastIsStale;
+}
+
+export async function syncArticleIntoCache(articleId: string): Promise<boolean> {
+  if (!supabase) return false;
+
+  try {
+    const { data, error } = await supabase
+      .from("articles")
+      .select(
+        `
+        *,
+        rss_sources (name, bias_rating, category)
+      `
+      )
+      .eq("id", articleId)
+      .eq("ai_processed", true)
+      .maybeSingle();
+
+    if (error || !data) return false;
+    const [processed] = await processDbArticles([data as DbArticle]);
+    if (!processed) return false;
+    await upsertCachedArticle(processed);
+    return true;
+  } catch (error) {
+    console.warn("[Beacon] Failed syncing article into cache", error);
+    return false;
+  }
 }
 
 export async function getArticleCount(): Promise<number> {

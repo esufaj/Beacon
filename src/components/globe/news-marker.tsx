@@ -17,8 +17,8 @@ export function NewsMarker({ point, isSelected, onClick }: NewsMarkerProps) {
   const baseColor = isSelected
     ? "#22C55E"
     : hasNews
-    ? "#3B82F6"
-    : "rgba(255, 255, 255, 0.2)";
+      ? "#3B82F6"
+      : "rgba(255, 255, 255, 0.2)";
   const size = hasNews ? (isSelected ? 16 : 12) : 6;
 
   const handleMouseEnter = useCallback(() => {
@@ -34,7 +34,7 @@ export function NewsMarker({ point, isSelected, onClick }: NewsMarkerProps) {
       e.stopPropagation();
       onClick();
     },
-    [onClick]
+    [onClick],
   );
 
   return (

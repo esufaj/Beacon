@@ -26,11 +26,11 @@ export default function Home() {
 
   const activeLocationsCount = useMemo(
     () => points.filter((p) => p.hasNews).length,
-    [points]
+    [points],
   );
 
   return (
-    <main className="flex h-screen w-screen overflow-hidden bg-background">
+    <main className="flex h-[100dvh] w-full overflow-hidden bg-background">
       <NewsSidebar />
 
       <div className="flex-1 relative min-w-0">
@@ -38,7 +38,10 @@ export default function Home() {
         <GlobeControls />
 
         {/* Mobile header */}
-        <div className="absolute top-4 left-4 z-10 flex items-center gap-3 lg:hidden">
+        <div
+          className="absolute top-3 left-3 z-10 flex items-center gap-3 lg:hidden"
+          style={{ paddingTop: "env(safe-area-inset-top)" }}
+        >
           <Button
             variant="ghost"
             size="icon"
@@ -56,7 +59,10 @@ export default function Home() {
         </div>
 
         {/* Status pill */}
-        <div className="absolute top-4 right-4 lg:top-5 lg:left-5 lg:right-auto z-10">
+        <div
+          className="absolute top-3 right-3 lg:top-5 lg:left-5 lg:right-auto z-10"
+          style={{ paddingTop: "env(safe-area-inset-top)" }}
+        >
           <div className="glass rounded-full px-3 py-1.5 flex items-center gap-2">
             {isLoading ? (
               <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse" />

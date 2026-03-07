@@ -102,8 +102,11 @@ export function GlobeControls() {
   };
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
-      <div className="glass rounded-xl px-1 py-1 flex items-center gap-0.5 shadow-lg">
+    <div
+      className="absolute left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-1rem)]"
+      style={{ bottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
+    >
+      <div className="glass rounded-xl px-1 py-1 inline-flex items-center gap-0.5 shadow-lg max-w-full overflow-x-auto scrollbar-none">
         {/* Zoom Out */}
         <Button
           variant="ghost"

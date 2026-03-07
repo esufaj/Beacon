@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { CategoryTag } from "./category-tag";
 import { useNewsStore } from "@/stores/news-store";
 import { useGlobeStore } from "@/stores/globe-store";
+import { useUIStore } from "@/stores/ui-store";
 import type { NewsArticle } from "@/types";
 import { cn } from "@/lib/utils";
 import { formatLocationLabel, isUnknownLocation } from "@/lib/location-utils";
@@ -13,7 +14,8 @@ import { formatLocationLabel, isUnknownLocation } from "@/lib/location-utils";
 interface NewsCardProps {
   article: NewsArticle;
   index: number;
-  isLast?: boolean;
+  isMobile: boolean;
+  isNew?: boolean;
 }
 
 function normalizeLocationId(name: string): string {
@@ -35,12 +37,17 @@ function isNearLocation(
   return latDiff < 0.5 && lngDiff < 0.5;
 }
 
-export function NewsCard({ article, index, isLast }: NewsCardProps) {
+export function NewsCard({ article, index, isMobile, isNew = false }: NewsCardProps) {
   const { setSelectedArticle } = useNewsStore();
+  const { setSidebarOpen } = useUIStore();
   const { points, selectedPoint, setSelectedPoint, setAutoRotating, flyTo } =
     useGlobeStore();
 
   const handleClick = () => {
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
+
     if (isUnknownLocation(article.location.name)) {
       setSelectedArticle(article);
       return;
@@ -111,21 +118,26 @@ export function NewsCard({ article, index, isLast }: NewsCardProps) {
       <div
         onClick={handleClick}
         className={cn(
-          "mx-2 px-3 py-3 cursor-pointer rounded-lg",
+          "px-3 py-2.5 cursor-pointer rounded-lg",
           "hover:bg-accent",
           "transition-all duration-150 ease-out",
           "group",
           "active:scale-[0.99]"
         )}
       >
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-1.5">
           <CategoryTag category={article.category} />
+          {isNew && (
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-orange-500">
+              NEW
+            </span>
+          )}
           <span className="text-[11px] text-muted-foreground ml-auto tabular-nums">
             {formatDistanceToNow(article.timestamp, { addSuffix: true })}
           </span>
         </div>
 
-        <h3 className="font-medium text-[13px] text-foreground leading-snug mb-2 line-clamp-2 group-hover:text-primary transition-colors duration-150">
+        <h3 className="font-medium text-[13px] text-foreground leading-snug mb-1.5 line-clamp-2 group-hover:text-primary transition-colors duration-150">
           {article.headline}
         </h3>
 

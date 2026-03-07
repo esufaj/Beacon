@@ -113,6 +113,12 @@ export async function fetchByCategories(
       technology: "tech",
       health: "health",
       "natural-disaster": "science",
+      sports: "sports",
+      science: "science",
+      environment: "science",
+      crime: "general",
+      education: "general",
+      entertainment: "entertainment",
     };
     
     const mappedCategories = categories
