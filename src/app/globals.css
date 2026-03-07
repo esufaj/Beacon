@@ -4,8 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-inter: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "sans-serif";
+  --font-inter:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "sans-serif";
 }
 
 @theme inline {
@@ -149,7 +149,9 @@
   :root:not(.dark) .glass {
     background: hsl(0 0% 100% / 0.75);
     border: 1px solid hsl(240 5.9% 90% / 0.8);
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+    box-shadow:
+      0 1px 3px 0 rgb(0 0 0 / 0.04),
+      0 1px 2px -1px rgb(0 0 0 / 0.04);
   }
   .glass-strong {
     background: hsl(240 10% 3.9% / 0.92);
@@ -160,7 +162,8 @@
   :root:not(.dark) .glass-strong {
     background: hsl(0 0% 100% / 0.92);
     border: 1px solid hsl(240 5.9% 90%);
-    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05),
+    box-shadow:
+      0 4px 6px -1px rgb(0 0 0 / 0.05),
       0 2px 4px -2px rgb(0 0 0 / 0.05);
   }
   .subtle-shadow {
@@ -170,11 +173,15 @@
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.2);
   }
   .elevated-shadow {
-    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.03), 0 2px 4px rgb(0 0 0 / 0.02),
+    box-shadow:
+      0 0 0 1px rgb(0 0 0 / 0.03),
+      0 2px 4px rgb(0 0 0 / 0.02),
       0 12px 24px rgb(0 0 0 / 0.04);
   }
   .dark .elevated-shadow {
-    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.04), 0 2px 4px rgb(0 0 0 / 0.1),
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.04),
+      0 2px 4px rgb(0 0 0 / 0.1),
       0 12px 24px rgb(0 0 0 / 0.2);
   }
 }
@@ -351,7 +358,8 @@
   border: 1px solid var(--border) !important;
   border-radius: 12px !important;
   padding: 0 !important;
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1),
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.1),
     0 12px 24px -4px rgb(0 0 0 / 0.15) !important;
   color: var(--popover-foreground) !important;
 }
@@ -407,12 +415,15 @@
 }
 
 .focus-ring:focus-visible {
-  box-shadow: 0 0 0 2px hsl(var(--background)),
+  box-shadow:
+    0 0 0 2px hsl(var(--background)),
     0 0 0 4px hsl(240 5.9% 10% / 0.4);
 }
 
 .dark .focus-ring:focus-visible {
-  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(0 0% 98% / 0.3);
+  box-shadow:
+    0 0 0 2px hsl(var(--background)),
+    0 0 0 4px hsl(0 0% 98% / 0.3);
 }
 
 /* Force text selection in drawer components */

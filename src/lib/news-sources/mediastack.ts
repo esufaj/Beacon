@@ -92,6 +92,12 @@ export async function fetchByCategory(category: string): Promise<RawArticle[]> {
       technology: "technology",
       health: "health",
       "natural-disaster": "science",
+      sports: "sports",
+      science: "science",
+      environment: "science",
+      crime: "general",
+      education: "general",
+      entertainment: "entertainment",
     };
 
     const mediaStackCategory = categoryMap[category] || "general";

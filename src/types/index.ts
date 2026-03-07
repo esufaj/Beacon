@@ -4,7 +4,13 @@ export type Category =
   | "natural-disaster"
   | "economy"
   | "technology"
-  | "health";
+  | "health"
+  | "sports"
+  | "science"
+  | "environment"
+  | "crime"
+  | "education"
+  | "entertainment";
 
 export interface Location {
   name: string;
@@ -89,6 +95,36 @@ export const CATEGORY_CONFIG: Record<Category, CategoryConfig> = {
     label: "Health",
     color: "#14B8A6",
     bgColor: "bg-teal-500/20",
+  },
+  sports: {
+    label: "Sports",
+    color: "#06B6D4",
+    bgColor: "bg-cyan-500/20",
+  },
+  science: {
+    label: "Science",
+    color: "#6366F1",
+    bgColor: "bg-indigo-500/20",
+  },
+  environment: {
+    label: "Environment",
+    color: "#16A34A",
+    bgColor: "bg-green-600/20",
+  },
+  crime: {
+    label: "Crime",
+    color: "#DC2626",
+    bgColor: "bg-red-600/20",
+  },
+  education: {
+    label: "Education",
+    color: "#EAB308",
+    bgColor: "bg-yellow-500/20",
+  },
+  entertainment: {
+    label: "Entertainment",
+    color: "#EC4899",
+    bgColor: "bg-pink-500/20",
   },
 };
 

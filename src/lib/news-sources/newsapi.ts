@@ -111,6 +111,12 @@ export async function fetchByCategory(
       technology: "technology",
       health: "health",
       "natural-disaster": "science",
+      sports: "sports",
+      science: "science",
+      environment: "science",
+      crime: "general",
+      education: "general",
+      entertainment: "entertainment",
     };
     
     const newsApiCategory = categoryMap[category] || "general";
