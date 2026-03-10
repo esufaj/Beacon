@@ -10,7 +10,8 @@ import { FilterButton } from "./filter-panel";
 export function SearchCombobox() {
   const [isFocused, setIsFocused] = useState(false);
   const [inputValue, setInputValue] = useState("");
-  const { setSearchQuery, clearFilters } = useNewsStore();
+  const setSearchQuery = useNewsStore((s) => s.setSearchQuery);
+  const clearFilters = useNewsStore((s) => s.clearFilters);
 
   const handleClear = () => {
     setInputValue("");

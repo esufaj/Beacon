@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Globe2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNewsStore } from "@/stores/news-store";
 import { useGlobeStore } from "@/stores/globe-store";
 import { useUIStore } from "@/stores/ui-store";
+import { useArticlesQuery } from "@/hooks/use-articles-query";
 import { NewsCard } from "./news-card";
 import { NewsCardSkeletonList } from "./news-card-skeleton";
 import { SearchCombobox } from "@/components/search/search-combobox";
@@ -18,57 +19,71 @@ import { useIsMobile } from "@/hooks/use-mobile";
 export function NewsSidebar() {
   const CARD_ROW_GAP_PX = 8;
   const LIST_EDGE_PADDING_PX = 10;
-  const {
-    filteredArticles,
-    clearFilters,
-    isLoading,
-    backgroundLoad,
-    newArticleIds,
-    requestLoadMore,
-  } = useNewsStore();
+  const filteredArticles = useNewsStore((s) => s.filteredArticles);
+  const clearFilters = useNewsStore((s) => s.clearFilters);
+  const isLoading = useNewsStore((s) => s.isLoading);
+  const backgroundLoad = useNewsStore((s) => s.backgroundLoad);
+  const newArticleIds = useNewsStore((s) => s.newArticleIds);
 
-  const {
-    setSelectedPoint,
-    setAutoRotating,
-    resetView,
-    projection,
-  } = useGlobeStore();
+  const setSelectedPoint = useGlobeStore((s) => s.setSelectedPoint);
+  const setAutoRotating = useGlobeStore((s) => s.setAutoRotating);
+  const resetView = useGlobeStore((s) => s.resetView);
+  const projection = useGlobeStore((s) => s.projection);
 
-  const { isSidebarOpen, setSidebarOpen } = useUIStore();
+  const isSidebarOpen = useUIStore((s) => s.isSidebarOpen);
+  const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
+  const { loadMore } = useArticlesQuery();
   const isMobile = useIsMobile();
   const parentRef = useRef<HTMLDivElement | null>(null);
-  const newIdsSet = useMemo(() => new Set(newArticleIds), [newArticleIds]);
+  const prevCountRef = useRef(filteredArticles.length);
+  const newIdsSet = newArticleIds;
 
   const rowVirtualizer = useVirtualizer({
     count: filteredArticles.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 154,
+    estimateSize: () => 92,
     getItemKey: (index) => filteredArticles[index]?.id ?? index,
     paddingStart: LIST_EDGE_PADDING_PX,
     paddingEnd: LIST_EDGE_PADDING_PX,
-    overscan: 8,
+    overscan: isMobile ? 3 : 5,
+    measureElement: (el) => el?.getBoundingClientRect().height ?? 92,
   });
   const virtualItems = rowVirtualizer.getVirtualItems();
 
-  useEffect(() => {
-    if (virtualItems.length === 0) return;
-    const lastItem = virtualItems[virtualItems.length - 1];
-    const nearEnd = lastItem.index >= filteredArticles.length - 12;
+  useLayoutEffect(() => {
+    const current = filteredArticles.length;
+    const prev = prevCountRef.current;
+    const container = parentRef.current;
 
-    if (
-      nearEnd &&
-      backgroundLoad.hasMore &&
-      !backgroundLoad.isBackgroundLoading
-    ) {
-      requestLoadMore();
+    if (current > prev && container && container.scrollTop > 10) {
+      const addedItems = current - prev;
+      let addedHeight = 0;
+      for (let i = 0; i < addedItems; i++) {
+        addedHeight += rowVirtualizer.measurementsCache[i]?.size ?? 92;
+      }
+      container.scrollTop += addedHeight;
     }
-  }, [
-    backgroundLoad.hasMore,
-    backgroundLoad.isBackgroundLoading,
-    filteredArticles.length,
-    requestLoadMore,
-    virtualItems,
-  ]);
+
+    prevCountRef.current = current;
+  }, [filteredArticles.length, rowVirtualizer.measurementsCache]);
+
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+
+  useEffect(() => {
+    const container = parentRef.current;
+    if (!container) return;
+
+    const onScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      if (scrollHeight - scrollTop - clientHeight < 300) {
+        loadMoreRef.current();
+      }
+    };
+
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
+  }, []);
 
   const handleClearFilter = () => {
     clearFilters();
@@ -177,6 +192,7 @@ export function NewsSidebar() {
                     style={{
                       transform: `translateY(${virtualRow.start}px)`,
                       paddingBottom: `${CARD_ROW_GAP_PX}px`,
+                      ...(isMobile ? { contentVisibility: "auto", containIntrinsicSize: "auto 92px" } : {}),
                     }}
                   >
                     <NewsCard

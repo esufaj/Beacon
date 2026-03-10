@@ -1,10 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+} from "react";
+import type { ReactNode } from "react";
 import Map from "react-map-gl/maplibre";
 import type { MapRef } from "react-map-gl/maplibre";
 import { useTheme } from "next-themes";
-import { motion } from "framer-motion";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGlobeStore, getDisplayPoints } from "@/stores/globe-store";
 import { useNewsStore } from "@/stores/news-store";
@@ -12,7 +19,6 @@ import { useUIStore } from "@/stores/ui-store";
 import { NewsMarker } from "./news-marker";
 import { getStyleUrl } from "@/lib/map-styles";
 
-// ASCII loading characters for globe
 const LOADING_FRAMES = ["◐", "◓", "◑", "◒"];
 const LOADING_MESSAGES = [
   "Scanning the globe...",
@@ -20,6 +26,57 @@ const LOADING_MESSAGES = [
   "Mapping locations...",
   "Almost there...",
 ];
+
+function isWebGLSupported(): boolean {
+  try {
+    const canvas = document.createElement("canvas");
+    return !!(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
+function GlobeFallback({ error }: { error?: string }) {
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-background text-center px-8">
+      <div className="font-mono text-5xl text-muted-foreground/30 mb-6">◌</div>
+      <h2 className="text-sm font-medium text-foreground mb-2">
+        Globe unavailable
+      </h2>
+      <p className="text-xs text-muted-foreground max-w-[280px]">
+        {error ||
+          "WebGL is required but not supported by your browser. Try disabling hardware acceleration restrictions or using a different browser."}
+      </p>
+    </div>
+  );
+}
+
+interface GlobeErrorBoundaryState {
+  hasError: boolean;
+  error: string | null;
+}
+
+export class GlobeErrorBoundary extends Component<
+  { children: ReactNode },
+  GlobeErrorBoundaryState
+> {
+  state: GlobeErrorBoundaryState = { hasError: false, error: null };
+
+  static getDerivedStateFromError(err: Error): GlobeErrorBoundaryState {
+    return { hasError: true, error: err.message };
+  }
+
+  componentDidCatch(err: Error) {
+    console.error("[Globe] Render error:", err);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <GlobeFallback error={this.state.error ?? undefined} />;
+    }
+    return this.props.children;
+  }
+}
 
 const getDefaultZoom = (width: number): number => {
   if (width >= 1920) return 2.2;
@@ -47,11 +104,17 @@ export function MapLibreGlobe() {
   const [containerWidth, setContainerWidth] = useState(0);
   const [loadingFrame, setLoadingFrame] = useState(0);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const [webglSupported, setWebglSupported] = useState(true);
 
-  // Animate loading state
+  useEffect(() => {
+    if (!isWebGLSupported()) {
+      setWebglSupported(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (isLoaded) return;
-    
+
     const frameInterval = setInterval(() => {
       setLoadingFrame((f) => (f + 1) % LOADING_FRAMES.length);
     }, 120);
@@ -78,26 +141,25 @@ export function MapLibreGlobe() {
     targetZoom: 1.8,
   });
 
-  const {
-    points,
-    selectedPoint,
-    isAutoRotating,
-    layers,
-    projection,
-    setSelectedPoint,
-    setAutoRotating,
-    setMapRef,
-    setZoomLevel,
-  } = useGlobeStore();
+  const points = useGlobeStore((s) => s.points);
+  const selectedPoint = useGlobeStore((s) => s.selectedPoint);
+  const isAutoRotating = useGlobeStore((s) => s.isAutoRotating);
+  const layers = useGlobeStore((s) => s.layers);
+  const projection = useGlobeStore((s) => s.projection);
+  const setSelectedPoint = useGlobeStore((s) => s.setSelectedPoint);
+  const setAutoRotating = useGlobeStore((s) => s.setAutoRotating);
+  const setMapRef = useGlobeStore((s) => s.setMapRef);
+  const setZoomLevel = useGlobeStore((s) => s.setZoomLevel);
 
-  const { filterByLocation, clearLocationSelection } = useNewsStore();
-  const { setSidebarOpen } = useUIStore();
+  const filterByLocation = useNewsStore((s) => s.filterByLocation);
+  const clearLocationSelection = useNewsStore((s) => s.clearLocationSelection);
+  const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
   const { resolvedTheme } = useTheme();
 
   const displayPoints = useMemo(() => getDisplayPoints(points), [points]);
   const mapStyle = useMemo(
     () => getStyleUrl(resolvedTheme === "light" ? "light" : "dark"),
-    [resolvedTheme]
+    [resolvedTheme],
   );
 
   useEffect(() => {
@@ -111,7 +173,7 @@ export function MapLibreGlobe() {
 
   const defaultZoom = useMemo(
     () => getDefaultZoom(containerWidth),
-    [containerWidth]
+    [containerWidth],
   );
 
   // Store map ref in global state
@@ -165,7 +227,7 @@ export function MapLibreGlobe() {
               map.setLayoutProperty(
                 layer.id,
                 "visibility",
-                visible ? "visible" : "none"
+                visible ? "visible" : "none",
               );
             } catch {
               // Layer may not support visibility
@@ -218,7 +280,12 @@ export function MapLibreGlobe() {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-      return;
+      return () => {
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+      };
     }
 
     const map = mapRef.current.getMap();
@@ -350,40 +417,29 @@ export function MapLibreGlobe() {
       filterByLocation,
       setAutoRotating,
       setSidebarOpen,
-    ]
+    ],
   );
+
+  if (!webglSupported) {
+    return <GlobeFallback />;
+  }
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-background">
-      {/* Loading state - ASCII style */}
-      <div
-        className={`absolute inset-0 z-50 flex flex-col items-center justify-center bg-background transition-opacity duration-700 ${
-          isLoaded ? "opacity-0 pointer-events-none" : "opacity-100"
-        }`}
-      >
-        {/* ASCII spinner */}
-        <motion.div 
-          className="font-mono text-5xl text-primary mb-5 select-none"
-          animate={{ rotate: [0, 0, 0, 0] }}
-          transition={{ duration: 0.5, repeat: Infinity }}
-        >
-          {LOADING_FRAMES[loadingFrame]}
-        </motion.div>
+      {!isLoaded && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background">
+          <div className="font-mono text-5xl text-primary mb-5 select-none animate-[spin_2s_linear_infinite]">
+            {LOADING_FRAMES[loadingFrame]}
+          </div>
+          <p
+            key={loadingMessageIndex}
+            className="text-sm text-muted-foreground font-medium animate-[fadeSlideIn_300ms_ease-out]"
+          >
+            {LOADING_MESSAGES[loadingMessageIndex]}
+          </p>
+        </div>
+      )}
 
-        {/* Message */}
-        <motion.p
-          key={loadingMessageIndex}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-          className="text-sm text-muted-foreground font-medium"
-        >
-          {LOADING_MESSAGES[loadingMessageIndex]}
-        </motion.p>
-      </div>
-
-      {/* Globe container with grow animation */}
       <div
         className={`w-full h-full transition-all duration-700 ease-out ${
           isAnimatingIn ? "scale-90 opacity-0" : "scale-100 opacity-100"
@@ -413,7 +469,7 @@ export function MapLibreGlobe() {
                 key={point.id}
                 point={point}
                 isSelected={selectedPoint?.id === point.id}
-                onClick={() => handleMarkerClick(point)}
+                onMarkerClick={handleMarkerClick}
               />
             ))}
         </Map>

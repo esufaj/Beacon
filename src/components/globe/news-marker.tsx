@@ -1,16 +1,20 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { Marker, Popup } from "react-map-gl/maplibre";
 import type { GeoPoint } from "@/types";
 
 interface NewsMarkerProps {
   point: GeoPoint;
   isSelected: boolean;
-  onClick: () => void;
+  onMarkerClick: (point: GeoPoint) => void;
 }
 
-export function NewsMarker({ point, isSelected, onClick }: NewsMarkerProps) {
+export const NewsMarker = React.memo(function NewsMarker({
+  point,
+  isSelected,
+  onMarkerClick,
+}: NewsMarkerProps) {
   const [showPopup, setShowPopup] = useState(false);
 
   const hasNews = point.hasNews;
@@ -32,9 +36,9 @@ export function NewsMarker({ point, isSelected, onClick }: NewsMarkerProps) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onClick();
+      onMarkerClick(point);
     },
-    [onClick],
+    [onMarkerClick, point],
   );
 
   return (
@@ -122,4 +126,4 @@ export function NewsMarker({ point, isSelected, onClick }: NewsMarkerProps) {
       )}
     </>
   );
-}
+});

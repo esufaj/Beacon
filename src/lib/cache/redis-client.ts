@@ -1,4 +1,4 @@
-import { env } from "node:process";
+const env = process.env;
 
 type RedisEntry = {
   score: number;
@@ -21,8 +21,24 @@ export interface RedisAdapter {
   hSetMany: (key: string, mapping: Record<string, string>) => Promise<void>;
   hSetOne: (key: string, field: string, value: string) => Promise<void>;
   hGetAll: (key: string) => Promise<Record<string, string>>;
+  hIncrBy: (key: string, field: string, increment: number) => Promise<number>;
+  get: (key: string) => Promise<string | null>;
+  set: (key: string, value: string, ttlSeconds?: number) => Promise<void>;
+  rename: (oldKey: string, newKey: string) => Promise<void>;
+  evalScript: (script: string, keys: string[], args: string[]) => Promise<unknown>;
+  pipeline: () => PipelineBuilder;
   del: (...keys: string[]) => Promise<void>;
   expire: (key: string, seconds: number) => Promise<void>;
+}
+
+export interface PipelineBuilder {
+  zadd: (key: string, score: number, member: string) => PipelineBuilder;
+  hset: (key: string, mapping: Record<string, string>) => PipelineBuilder;
+  hincrby: (key: string, field: string, increment: number) => PipelineBuilder;
+  rename: (oldKey: string, newKey: string) => PipelineBuilder;
+  expire: (key: string, seconds: number) => PipelineBuilder;
+  del: (...keys: string[]) => PipelineBuilder;
+  exec: () => Promise<unknown[]>;
 }
 
 let adapterPromise: Promise<RedisAdapter | null> | null = null;
@@ -159,6 +175,40 @@ async function createUpstashAdapter(): Promise<RedisAdapter | null> {
       const values = await client.hgetall<Record<string, string>>(key);
       return values ?? {};
     },
+    hIncrBy: async (key, field, increment) => {
+      const result = await client.hincrby(key, field, increment);
+      return typeof result === "number" ? result : Number(result);
+    },
+    get: async (key) => {
+      const value = await client.get<string>(key);
+      return value ?? null;
+    },
+    set: async (key, value, ttlSeconds) => {
+      if (ttlSeconds) {
+        await client.set(key, value, { ex: ttlSeconds });
+      } else {
+        await client.set(key, value);
+      }
+    },
+    rename: async (oldKey, newKey) => {
+      await client.rename(oldKey, newKey);
+    },
+    evalScript: async (script, keys, args) => {
+      return client.eval(script, keys, args);
+    },
+    pipeline: () => {
+      const p = client.pipeline();
+      const builder: PipelineBuilder = {
+        zadd: (key, score, member) => { p.zadd(key, { score, member }); return builder; },
+        hset: (key, mapping) => { p.hset(key, mapping); return builder; },
+        hincrby: (key, field, increment) => { p.hincrby(key, field, increment); return builder; },
+        rename: (oldKey, newKey) => { p.rename(oldKey, newKey); return builder; },
+        expire: (key, seconds) => { p.expire(key, seconds); return builder; },
+        del: (...keys) => { for (const k of keys) p.del(k); return builder; },
+        exec: () => p.exec(),
+      };
+      return builder;
+    },
     del: async (...keys) => {
       if (keys.length === 0) return;
       await client.del(...keys);
@@ -213,6 +263,38 @@ async function createRedisUrlAdapter(): Promise<RedisAdapter | null> {
       await client.hSet(key, field, value);
     },
     hGetAll: async (key) => client.hGetAll(key),
+    hIncrBy: async (key, field, increment) => {
+      return client.hIncrBy(key, field, increment);
+    },
+    get: async (key) => {
+      return (await client.get(key)) ?? null;
+    },
+    set: async (key, value, ttlSeconds) => {
+      if (ttlSeconds) {
+        await client.set(key, value, { EX: ttlSeconds });
+      } else {
+        await client.set(key, value);
+      }
+    },
+    rename: async (oldKey, newKey) => {
+      await client.rename(oldKey, newKey);
+    },
+    evalScript: async (script, keys, args) => {
+      return client.eval(script, { keys, arguments: args });
+    },
+    pipeline: () => {
+      const multi = client.multi();
+      const builder: PipelineBuilder = {
+        zadd: (key, score, member) => { multi.zAdd(key, { score, value: member }); return builder; },
+        hset: (key, mapping) => { multi.hSet(key, mapping); return builder; },
+        hincrby: (key, field, increment) => { multi.hIncrBy(key, field, increment); return builder; },
+        rename: (oldKey, newKey) => { multi.rename(oldKey, newKey); return builder; },
+        expire: (key, seconds) => { multi.expire(key, seconds); return builder; },
+        del: (...keys) => { for (const k of keys) multi.del(k); return builder; },
+        exec: () => multi.exec(),
+      };
+      return builder;
+    },
     del: async (...keys) => {
       if (keys.length === 0) return;
       await client.del(keys);

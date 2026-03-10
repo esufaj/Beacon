@@ -7,13 +7,13 @@ import { supabase, type DbArticle } from "./supabase";
 import { sanitizeLocationString } from "@/lib/location-utils";
 import { formatSourceName } from "@/lib/source-utils";
 import {
-  clearCachedWindow,
   getCachedPage,
   getMemoryCacheAgeMs,
   setCachedWindow,
   type CacheLayer,
   upsertCachedArticle,
 } from "@/lib/cache/article-cache";
+import { warmLocationCache } from "@/lib/cache/location-cache";
 
 const CATEGORY_MAP: Record<string, Category> = {
   Politics: "politics",
@@ -34,8 +34,6 @@ const DB_BATCH_SIZE = 500;
 const DEFAULT_PAGE_SIZE = 50;
 const DEFAULT_HOURS_BACK = 24;
 
-let lastCacheAgeMs = 0;
-let lastIsStale = false;
 const windowRebuilds = new Map<
   number,
   Promise<{ articles: NewsArticle[]; cacheLayer: CacheLayer }>
@@ -106,14 +104,14 @@ async function loadRawArticlesPageFromDb({
     Date.now() - hoursBack * 60 * 60 * 1000
   ).toISOString();
 
-  const { data, count, error } = await supabase
+  const { data, error, count } = await supabase
     .from("articles")
     .select(
       `
       *,
       rss_sources (name, bias_rating, category)
     `,
-      { count: "exact" }
+      { count: "exact" },
     )
     .eq("ai_processed", true)
     .gte("published_at", cutoffDate)
@@ -124,7 +122,7 @@ async function loadRawArticlesPageFromDb({
     throw new Error(formatSupabaseError(error));
   }
 
-  return { data: (data ?? []) as DbArticle[], totalCount: count ?? 0 };
+  return { data: (data ?? []) as DbArticle[], totalCount: count ?? data?.length ?? 0 };
 }
 
 async function loadRawArticlesWindowFromDb(hoursBack: number): Promise<DbArticle[]> {
@@ -250,7 +248,24 @@ async function loadAndCacheWindow(hoursBack: number): Promise<{
 }> {
   const raw = await loadRawArticlesWindowFromDb(hoursBack);
   const articles = await processDbArticles(raw);
-  const cacheLayer = await setCachedWindow(articles);
+
+  const cacheLayerPromise = setCachedWindow(articles);
+
+  const locationWarmPromise = (async () => {
+    if (!supabase) return;
+    try {
+      const { data } = await supabase
+        .from("location_cache")
+        .select("location, name, lat, lng, country, region");
+      if (data && data.length > 0) {
+        await warmLocationCache(data);
+      }
+    } catch (error) {
+      console.warn("[Beacon] Location cache warm failed", error);
+    }
+  })();
+
+  const [cacheLayer] = await Promise.all([cacheLayerPromise, locationWarmPromise]);
   return { articles, cacheLayer };
 }
 
@@ -261,10 +276,10 @@ function getOrStartWindowRebuild(hoursBack: number): Promise<{
   const existing = windowRebuilds.get(hoursBack);
   if (existing) return existing;
 
-  const rebuild = (async () => {
-    await clearCachedWindow();
-    return loadAndCacheWindow(hoursBack);
-  })().finally(() => {
+  const rebuild = loadAndCacheWindow(hoursBack).catch((err) => {
+    windowRebuilds.delete(hoursBack);
+    throw err;
+  }).finally(() => {
     windowRebuilds.delete(hoursBack);
   });
 
@@ -287,10 +302,6 @@ export async function getNewsPage(
   const hoursBack = Math.max(1, options.hoursBack ?? DEFAULT_HOURS_BACK);
   const forceRefresh = options.forceRefresh ?? false;
 
-  if (forceRefresh) {
-    await clearCachedWindow();
-  }
-
   const cachedPage = await getCachedPage(offset, limit);
   const canUseCache = cachedPage.cacheHit && !forceRefresh;
   const cacheLooksCorrupt =
@@ -301,8 +312,6 @@ export async function getNewsPage(
     !cacheLooksCorrupt &&
     (!cachedPage.isStale || cachedPage.totalCount > 0)
   ) {
-    lastCacheAgeMs = cachedPage.cacheAgeMs;
-    lastIsStale = cachedPage.isStale;
     return {
       articles: cachedPage.articles,
       totalCount: cachedPage.totalCount,
@@ -323,8 +332,7 @@ export async function getNewsPage(
   try {
     const { articles, cacheLayer } = await getOrStartWindowRebuild(hoursBack);
     const page = articles.slice(offset, offset + limit);
-    lastCacheAgeMs = getMemoryCacheAgeMs();
-    lastIsStale = false;
+    const cacheAgeMs = getMemoryCacheAgeMs();
     return {
       articles: page,
       totalCount: articles.length,
@@ -332,13 +340,11 @@ export async function getNewsPage(
       nextOffset: offset + limit < articles.length ? offset + limit : null,
       cacheLayer: cacheLayer === "memory" ? "db" : cacheLayer,
       isStale: false,
-      cacheAgeMs: lastCacheAgeMs,
+      cacheAgeMs,
       maxPublishedAt: articles[0]?.timestamp.toISOString() ?? null,
     };
   } catch (error) {
     console.error("[Beacon] Failed loading DB window, returning cache fallback", error);
-    lastCacheAgeMs = cachedPage.cacheAgeMs;
-    lastIsStale = true;
     return {
       articles: cachedPage.articles,
       totalCount: cachedPage.totalCount,
@@ -364,162 +370,53 @@ export async function fetchAndProcessNews(
   return page.articles;
 }
 
-export async function getCachedNews(forceRefresh = false): Promise<NewsArticle[]> {
-  const page = await getNewsPage({
-    offset: 0,
-    limit: DEFAULT_PAGE_SIZE,
-    hoursBack: DEFAULT_HOURS_BACK,
-    forceRefresh,
-  });
-  return page.articles;
-}
-
-export function getCacheAge(): number {
-  return lastCacheAgeMs;
-}
-
-export function isCacheStale(): boolean {
-  return lastIsStale;
-}
-
-export async function syncArticleIntoCache(articleId: string): Promise<boolean> {
-  if (!supabase) return false;
-
-  try {
-    const { data, error } = await supabase
-      .from("articles")
-      .select(
-        `
-        *,
-        rss_sources (name, bias_rating, category)
-      `
-      )
-      .eq("id", articleId)
-      .eq("ai_processed", true)
-      .maybeSingle();
-
-    if (error || !data) return false;
-    const [processed] = await processDbArticles([data as DbArticle]);
-    if (!processed) return false;
-    await upsertCachedArticle(processed);
-    return true;
-  } catch (error) {
-    console.warn("[Beacon] Failed syncing article into cache", error);
-    return false;
+export async function getInitialArticlesFromRedis(
+  limit = 50
+): Promise<{ articles: NewsArticle[]; totalCount: number; maxPublishedAt: string | null }> {
+  const page = await getCachedPage(0, limit);
+  if (page.cacheHit && page.articles.length > 0) {
+    return {
+      articles: page.articles,
+      totalCount: page.totalCount,
+      maxPublishedAt: page.maxPublishedAt,
+    };
   }
+
+  const fullPage = await getNewsPage({ offset: 0, limit });
+  return {
+    articles: fullPage.articles,
+    totalCount: fullPage.totalCount,
+    maxPublishedAt: fullPage.maxPublishedAt,
+  };
 }
 
-export async function getArticleCount(): Promise<number> {
-  if (!supabase) return 0;
-  
-  const { count, error } = await supabase
-    .from("articles")
-    .select("*", { count: "exact", head: true })
-    .eq("ai_processed", true);
-  
-  if (error) {
-    console.error("[Beacon] Error getting article count:", formatSupabaseError(error));
-    return 0;
-  }
-  
-  return count || 0;
-}
-
-export async function getSourceStats(): Promise<{ total: number; withErrors: number; lastSync: Date | null }> {
+export async function querySourceStatsFromDb(): Promise<{
+  total: number;
+  withErrors: number;
+  lastSync: string | null;
+}> {
   if (!supabase) return { total: 0, withErrors: 0, lastSync: null };
-  
+
   const { data: sources, error } = await supabase
     .from("rss_sources")
     .select("last_fetched_at, fetch_error")
     .eq("is_active", true);
-  
+
   if (error || !sources) {
     return { total: 0, withErrors: 0, lastSync: null };
   }
-  
-  const withErrors = sources.filter(s => s.fetch_error !== null).length;
+
+  const withErrors = sources.filter((s) => s.fetch_error !== null).length;
   const lastFetched = sources
-    .map(s => s.last_fetched_at)
+    .map((s) => s.last_fetched_at)
     .filter(Boolean)
     .sort()
     .pop();
-  
+
   return {
     total: sources.length,
     withErrors,
-    lastSync: lastFetched ? new Date(lastFetched) : null,
+    lastSync: lastFetched ?? null,
   };
 }
 
-export async function triggerManualSync(): Promise<{ success: boolean; message: string }> {
-  try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/fetch-rss-feeds`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-        },
-      }
-    );
-    
-    if (!response.ok) {
-      return { success: false, message: `HTTP ${response.status}` };
-    }
-    
-    const data = await response.json();
-    return {
-      success: true,
-      message: `Fetched ${data.articles_fetched} articles, ${data.articles_new} new`,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
-}
-
-export interface RssSource {
-  id: number;
-  name: string;
-  category: string | null;
-  bias_rating: string | null;
-}
-
-export async function getAllSources(): Promise<RssSource[]> {
-  // Return empty array during SSR or when Supabase is not configured
-  if (!supabase) {
-    return [];
-  }
-
-  // Additional check for client-side only execution
-  if (typeof window === "undefined") {
-    return [];
-  }
-  
-  try {
-    const { data: sources, error } = await supabase
-      .from("rss_sources")
-      .select("id, name, category, bias_rating")
-      .eq("is_active", true)
-      .order("name");
-    
-    if (error) {
-      // Only log in development to avoid noise in production
-      if (process.env.NODE_ENV === "development") {
-        console.warn("[Beacon] Error fetching sources:", formatSupabaseError(error));
-      }
-      return [];
-    }
-    
-    return sources ?? [];
-  } catch (err) {
-    // Catch any unexpected errors (network issues, etc.)
-    if (process.env.NODE_ENV === "development") {
-      console.warn("[Beacon] Unexpected error fetching sources:", err instanceof Error ? err.message : "Unknown error");
-    }
-    return [];
-  }
-}

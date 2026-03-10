@@ -3,7 +3,12 @@ import { getNewsPage } from "@/lib/news-service";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const secret = request.headers.get("x-refresh-secret");
+  if (secret !== process.env.CACHE_REFRESH_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
   try {
     const page = await getNewsPage({
       offset: 0,
@@ -30,7 +35,3 @@ export async function POST() {
     );
   }
 }
-
-
-
-
