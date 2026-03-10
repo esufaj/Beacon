@@ -28,16 +28,15 @@ export function BeaconGlobe() {
   const wasAutoRotatingRef = useRef(true);
   const [beamPhase, setBeamPhase] = useState(0);
 
-  const {
-    points,
-    selectedPoint,
-    isAutoRotating,
-    setSelectedPoint,
-    setAutoRotating,
-    registerResetCallback,
-    registerFlyToCallback,
-  } = useGlobeStore();
-  const { filterByLocation, clearLocationSelection } = useNewsStore();
+  const points = useGlobeStore((s) => s.points);
+  const selectedPoint = useGlobeStore((s) => s.selectedPoint);
+  const isAutoRotating = useGlobeStore((s) => s.isAutoRotating);
+  const setSelectedPoint = useGlobeStore((s) => s.setSelectedPoint);
+  const setAutoRotating = useGlobeStore((s) => s.setAutoRotating);
+  const registerResetCallback = useGlobeStore((s) => s.registerResetCallback);
+  const registerFlyToCallback = useGlobeStore((s) => s.registerFlyToCallback);
+  const filterByLocation = useNewsStore((s) => s.filterByLocation);
+  const clearLocationSelection = useNewsStore((s) => s.clearLocationSelection);
 
   // Get display points (major cities + news locations) - no clustering
   const displayPoints = useMemo(() => getDisplayPoints(points), [points]);

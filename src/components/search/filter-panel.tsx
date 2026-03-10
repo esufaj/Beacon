@@ -94,33 +94,33 @@ const URGENCY_OPTIONS: { value: Urgency; label: string; color: string }[] = [
 const DATE_PRESETS = [
   {
     label: "Today",
-    getValue: () => {
+    getValue: (): { start: string; end: null } => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
-      return { start, end: null };
+      return { start: start.toISOString(), end: null };
     },
   },
   {
     label: "Last 24h",
-    getValue: () => ({
-      start: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    getValue: (): { start: string; end: null } => ({
+      start: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
       end: null,
     }),
   },
   {
     label: "Last 3 days",
-    getValue: () => ({
-      start: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+    getValue: (): { start: string; end: null } => ({
+      start: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
       end: null,
     }),
   },
   {
     label: "This week",
-    getValue: () => {
+    getValue: (): { start: string; end: null } => {
       const start = new Date();
       start.setDate(start.getDate() - start.getDay());
       start.setHours(0, 0, 0, 0);
-      return { start, end: null };
+      return { start: start.toISOString(), end: null };
     },
   },
 ];
@@ -260,8 +260,8 @@ function DateFilter({
           >
             <CalendarComponent
               mode="single"
-              selected={dateRange.start || undefined}
-              onSelect={(date) => onChange({ start: date || null, end: null })}
+              selected={dateRange.start ? new Date(dateRange.start) : undefined}
+              onSelect={(date: Date | undefined) => onChange({ start: date?.toISOString() ?? null, end: null })}
               disabled={(date) => date > new Date()}
               className="mt-2"
             />
@@ -532,7 +532,8 @@ export function FilterButton() {
 
 // Active filters display component (shows pills of active filters)
 export function ActiveFilters() {
-  const { filters, setFilters } = useNewsStore();
+  const filters = useNewsStore((s) => s.filters);
+  const setFilters = useNewsStore((s) => s.setFilters);
 
   const removeSource = (source: string) => {
     setFilters({ sources: filters.sources.filter((s) => s !== source) });

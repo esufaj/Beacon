@@ -27,16 +27,17 @@ export async function GET(request: Request) {
       });
     }
 
-    const {
-      getNewsPage,
-      getArticleCount,
-      getSourceStats,
-    } = await import("@/lib/news-service");
+    const { getNewsPage, querySourceStatsFromDb } = await import(
+      "@/lib/news-service"
+    );
+    const { getArticleCountFromRedis, getSourceStatsFromRedis } = await import(
+      "@/lib/cache/stats-cache"
+    );
 
     const [page, articleCount, sourceStats] = await Promise.all([
       getNewsPage({ offset, limit, hoursBack, forceRefresh }),
-      getArticleCount(),
-      getSourceStats(),
+      getArticleCountFromRedis(),
+      getSourceStatsFromRedis(() => querySourceStatsFromDb()),
     ]);
 
     return NextResponse.json({
@@ -50,10 +51,10 @@ export async function GET(request: Request) {
       nextOffset: page.nextOffset,
       maxPublishedAt: page.maxPublishedAt,
       stats: {
-        totalArticles: articleCount,
+        totalArticles: articleCount || page.totalCount,
         totalSources: sourceStats.total,
         sourcesWithErrors: sourceStats.withErrors,
-        lastSync: sourceStats.lastSync?.toISOString() || null,
+        lastSync: sourceStats.lastSync,
       },
     });
   } catch (error) {

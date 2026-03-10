@@ -38,10 +38,13 @@ function isNearLocation(
 }
 
 export function NewsCard({ article, index, isMobile, isNew = false }: NewsCardProps) {
-  const { setSelectedArticle } = useNewsStore();
-  const { setSidebarOpen } = useUIStore();
-  const { points, selectedPoint, setSelectedPoint, setAutoRotating, flyTo } =
-    useGlobeStore();
+  const setSelectedArticle = useNewsStore((s) => s.setSelectedArticle);
+  const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
+  const points = useGlobeStore((s) => s.points);
+  const selectedPoint = useGlobeStore((s) => s.selectedPoint);
+  const setSelectedPoint = useGlobeStore((s) => s.setSelectedPoint);
+  const setAutoRotating = useGlobeStore((s) => s.setAutoRotating);
+  const flyTo = useGlobeStore((s) => s.flyTo);
 
   const handleClick = () => {
     if (isMobile) {

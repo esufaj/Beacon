@@ -1,96 +1,31 @@
-"use client";
+import { Suspense } from "react";
+import { DashboardClient } from "@/components/dashboard-client";
+import { getInitialArticlesFromRedis } from "@/lib/news-service";
 
-import { useEffect, useMemo } from "react";
-import { Menu } from "lucide-react";
-import { MapLibreGlobe } from "@/components/globe/maplibre-globe";
-import { GlobeControls } from "@/components/globe/globe-controls";
-import { NewsSidebar } from "@/components/news/news-sidebar";
-import { ArticleDrawer } from "@/components/news/article-drawer";
-import { BeaconLogo } from "@/components/beacon-logo";
-import { Button } from "@/components/ui/button";
-import { useGlobeStore } from "@/stores/globe-store";
-import { useNewsStore } from "@/stores/news-store";
-import { useUIStore } from "@/stores/ui-store";
-import { useRealtimeNews } from "@/hooks/use-realtime-news";
-
-export default function Home() {
-  const { initializePoints, points } = useGlobeStore();
-  const { articles } = useNewsStore();
-  const { toggleSidebar } = useUIStore();
-
-  const { isLoading, source } = useRealtimeNews();
-
-  useEffect(() => {
-    initializePoints(articles);
-  }, [articles, initializePoints]);
-
-  const activeLocationsCount = useMemo(
-    () => points.filter((p) => p.hasNews).length,
-    [points],
-  );
-
+function DashboardSkeleton() {
   return (
     <main className="flex h-[100dvh] w-full overflow-hidden bg-background">
-      <NewsSidebar />
-
-      <div className="flex-1 relative min-w-0">
-        <MapLibreGlobe />
-        <GlobeControls />
-
-        {/* Mobile header */}
-        <div
-          className="absolute top-3 left-3 z-10 flex items-center gap-3 lg:hidden"
-          style={{ paddingTop: "env(safe-area-inset-top)" }}
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleSidebar}
-            className="h-8 w-8 glass rounded-lg bg-card border border-border shadow-sm hover:bg-accent"
-          >
-            <Menu className="h-4 w-4" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <BeaconLogo />
-            <span className="text-[14px] font-semibold text-foreground">
-              Beacon
-            </span>
-          </div>
-        </div>
-
-        {/* Status pill */}
-        <div
-          className="absolute top-3 right-3 lg:top-5 lg:left-5 lg:right-auto z-10"
-          style={{ paddingTop: "env(safe-area-inset-top)" }}
-        >
-          <div className="glass rounded-full px-3 py-1.5 flex items-center gap-2">
-            {isLoading ? (
-              <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse" />
-            ) : (
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping-slow absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-              </span>
-            )}
-            <span className="text-[11px] text-muted-foreground tabular-nums">
-              <span className="text-foreground font-medium">
-                {articles.length}
-              </span>
-              <span className="hidden sm:inline"> stories</span>
-              <span className="text-muted-foreground/40 mx-1 sm:mx-1.5">•</span>
-              <span className="text-foreground font-medium">
-                {activeLocationsCount}
-              </span>
-              <span className="hidden sm:inline"> locations</span>
-              {source === "error" && (
-                <span className="text-destructive ml-1.5 font-medium">!</span>
-              )}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <ArticleDrawer />
+      <div className="w-[380px] h-full bg-background border-r border-border animate-pulse" />
+      <div className="flex-1 bg-background" />
     </main>
+  );
+}
+
+async function DashboardLoader() {
+  const { articles, totalCount } = await getInitialArticlesFromRedis(50);
+
+  return (
+    <DashboardClient
+      initialArticles={articles}
+      totalCount={totalCount}
+    />
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardLoader />
+    </Suspense>
   );
 }

@@ -389,7 +389,8 @@ function getArticleExcerpt(article: NewsArticle): string[] {
 }
 
 export function ArticleDrawer() {
-  const { selectedArticle, setSelectedArticle } = useNewsStore();
+  const selectedArticle = useNewsStore((s) => s.selectedArticle);
+  const setSelectedArticle = useNewsStore((s) => s.setSelectedArticle);
 
   const handleClose = () => {
     setSelectedArticle(null);

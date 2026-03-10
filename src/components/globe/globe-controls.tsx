@@ -33,17 +33,15 @@ export function GlobeControls() {
   const [isResetting, setIsResetting] = useState(false);
   const zoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const {
-    isAutoRotating,
-    setAutoRotating,
-    triggerFastSpinReset,
-    mapRef,
-    layers,
-    toggleLayer,
-    projection,
-    toggleProjection,
-  } = useGlobeStore();
-  const { clearFilters } = useNewsStore();
+  const isAutoRotating = useGlobeStore((s) => s.isAutoRotating);
+  const setAutoRotating = useGlobeStore((s) => s.setAutoRotating);
+  const triggerFastSpinReset = useGlobeStore((s) => s.triggerFastSpinReset);
+  const mapRef = useGlobeStore((s) => s.mapRef);
+  const layers = useGlobeStore((s) => s.layers);
+  const toggleLayer = useGlobeStore((s) => s.toggleLayer);
+  const projection = useGlobeStore((s) => s.projection);
+  const toggleProjection = useGlobeStore((s) => s.toggleProjection);
+  const clearFilters = useNewsStore((s) => s.clearFilters);
 
   const isMapView = projection === "mercator";
 

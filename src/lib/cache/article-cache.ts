@@ -1,28 +1,22 @@
+import "server-only";
+
 import type { NewsArticle } from "@/types";
 import { getRedisAdapter } from "./redis-client";
 
 const ZSET_KEY = "news:articles:24h:zset";
 const HASH_KEY = "news:articles:24h:hash";
 const META_KEY = "news:articles:24h:meta";
+const LOCATIONS_KEY = "news:articles:24h:locations";
 
 const DEFAULT_TTL_SECONDS = 10 * 60;
 const CACHE_TTL_SECONDS =
   Number(process.env.NEWS_CACHE_TTL_SECONDS) || DEFAULT_TTL_SECONDS;
 
+const ZADD_CHUNK_SIZE = 200;
+const HASH_CHUNK_SIZE = 100;
+const HASH_CHUNK_MAX_BYTES = 256 * 1024;
+
 type SerializedArticle = Omit<NewsArticle, "timestamp"> & { timestamp: string };
-
-type CacheMeta = {
-  updatedAt: number;
-  maxPublishedAt: string | null;
-  totalCount: number;
-};
-
-type MemoryCache = {
-  articles: SerializedArticle[];
-  updatedAt: number;
-};
-
-let memoryCache: MemoryCache = { articles: [], updatedAt: 0 };
 
 export type CacheLayer = "redis-upstash" | "redis-url" | "memory" | "db";
 
@@ -37,51 +31,58 @@ export type CachedPageResult = {
 };
 
 function serializeArticle(article: NewsArticle): SerializedArticle {
-  return {
-    ...article,
-    timestamp: article.timestamp.toISOString(),
-  };
+  return { ...article, timestamp: article.timestamp.toISOString() };
 }
 
 function deserializeArticle(article: SerializedArticle): NewsArticle {
-  return {
-    ...article,
-    timestamp: new Date(article.timestamp),
-  };
+  return { ...article, timestamp: new Date(article.timestamp) };
 }
 
 function articleScore(article: SerializedArticle): number {
   return new Date(article.timestamp).getTime();
 }
 
-function buildMeta(serialized: SerializedArticle[]): CacheMeta {
-  return {
-    updatedAt: Date.now(),
-    maxPublishedAt: serialized[0]?.timestamp ?? null,
-    totalCount: serialized.length,
-  };
+// --- Integrity check via Lua (replaces MULTI/EXEC which is blocked on Upstash REST) ---
+
+const INTEGRITY_SCRIPT = `
+local zset_count = redis.call('ZCARD', KEYS[1])
+local meta_count = tonumber(redis.call('HGET', KEYS[2], 'totalCount'))
+if meta_count == nil then return 1 end
+if math.abs(zset_count - meta_count) > 10 then
+  return 0
+end
+return 1
+`;
+
+async function verifyCacheIntegrity(): Promise<boolean> {
+  const adapter = await getRedisAdapter();
+  if (!adapter) return true;
+  try {
+    const result = await adapter.evalScript(INTEGRITY_SCRIPT, [ZSET_KEY, META_KEY], []);
+    return result === 1 || result === "1";
+  } catch {
+    return false;
+  }
 }
 
-function getMemoryPage(offset: number, limit: number): CachedPageResult {
-  const page = memoryCache.articles.slice(offset, offset + limit);
-  const cacheAgeMs = memoryCache.updatedAt ? Date.now() - memoryCache.updatedAt : 0;
-  return {
-    cacheHit: page.length > 0 || memoryCache.articles.length > 0,
-    cacheLayer: "memory",
-    isStale: cacheAgeMs > CACHE_TTL_SECONDS * 1000,
-    cacheAgeMs,
-    totalCount: memoryCache.articles.length,
-    maxPublishedAt: memoryCache.articles[0]?.timestamp ?? null,
-    articles: page.map(deserializeArticle),
-  };
-}
+// --- Read path ---
 
-async function getRedisPage(
+export async function getCachedPage(
   offset: number,
   limit: number
-): Promise<CachedPageResult | null> {
+): Promise<CachedPageResult> {
   const adapter = await getRedisAdapter();
-  if (!adapter) return null;
+  const emptyResult: CachedPageResult = {
+    cacheHit: false,
+    cacheLayer: "memory",
+    isStale: false,
+    cacheAgeMs: 0,
+    totalCount: 0,
+    maxPublishedAt: null,
+    articles: [],
+  };
+
+  if (!adapter) return emptyResult;
 
   try {
     const [count, metaRaw] = await Promise.all([
@@ -89,40 +90,44 @@ async function getRedisPage(
       adapter.hGetAll(META_KEY),
     ]);
 
+    const layer: CacheLayer = adapter.mode === "upstash" ? "redis-upstash" : "redis-url";
+
     if (count === 0) {
+      return { ...emptyResult, cacheLayer: layer };
+    }
+
+    const ids = await adapter.zRangeRev(ZSET_KEY, offset, offset + limit - 1);
+    if (ids.length === 0) {
       return {
-        cacheHit: false,
-        cacheLayer: adapter.mode === "upstash" ? "redis-upstash" : "redis-url",
+        cacheHit: true,
+        cacheLayer: layer,
         isStale: false,
         cacheAgeMs: 0,
-        totalCount: 0,
-        maxPublishedAt: null,
+        totalCount: Number(metaRaw.totalCount || count),
+        maxPublishedAt: metaRaw.maxPublishedAt || null,
         articles: [],
       };
     }
 
-    const ids = await adapter.zRangeRev(ZSET_KEY, offset, offset + limit - 1);
     const payloads = await adapter.hGetMany(HASH_KEY, ids);
 
-    const serialized = payloads
-      .map((payload) => {
-        if (!payload) return null;
-        try {
-          return JSON.parse(payload) as SerializedArticle;
-        } catch {
-          return null;
-        }
-      })
-      .filter((article): article is SerializedArticle => article !== null);
+    const articles: NewsArticle[] = [];
+    for (const payload of payloads) {
+      if (!payload) continue;
+      try {
+        articles.push(deserializeArticle(JSON.parse(payload) as SerializedArticle));
+      } catch {
+        // skip malformed
+      }
+    }
 
     const updatedAt = Number(metaRaw.updatedAt || 0);
     const cacheAgeMs = updatedAt ? Date.now() - updatedAt : 0;
-    const pageLooksCorrupt = ids.length > 0 && serialized.length === 0;
 
-    if (pageLooksCorrupt) {
+    if (ids.length > 0 && articles.length === 0) {
       return {
         cacheHit: false,
-        cacheLayer: adapter.mode === "upstash" ? "redis-upstash" : "redis-url",
+        cacheLayer: layer,
         isStale: true,
         cacheAgeMs,
         totalCount: Number(metaRaw.totalCount || count),
@@ -133,144 +138,162 @@ async function getRedisPage(
 
     return {
       cacheHit: true,
-      cacheLayer: adapter.mode === "upstash" ? "redis-upstash" : "redis-url",
+      cacheLayer: layer,
       isStale: cacheAgeMs > CACHE_TTL_SECONDS * 1000,
       cacheAgeMs,
       totalCount: Number(metaRaw.totalCount || count),
-      maxPublishedAt: metaRaw.maxPublishedAt || serialized[0]?.timestamp || null,
-      articles: serialized.map(deserializeArticle),
+      maxPublishedAt: metaRaw.maxPublishedAt || articles[0]?.timestamp.toISOString() || null,
+      articles,
     };
   } catch (error) {
-    console.warn("[Beacon] Redis cache read failed, falling back to memory", error);
-    return null;
+    console.warn("[Beacon] Redis cache read failed", error);
+    return emptyResult;
   }
 }
 
-export async function getCachedPage(
-  offset: number,
-  limit: number
-): Promise<CachedPageResult> {
-  const redisPage = await getRedisPage(offset, limit);
-  if (redisPage) return redisPage;
-  return getMemoryPage(offset, limit);
+// --- Write path: Blue/Green atomic cache warm via RENAME ---
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
 }
 
-async function verifyRedisWindowIntegrity(expectedCount: number): Promise<boolean> {
-  const adapter = await getRedisAdapter();
-  if (!adapter) return true;
+function chunkHashMapping(
+  mapping: Record<string, string>,
+  maxFields: number,
+  maxBytes: number
+): Record<string, string>[] {
+  const chunks: Record<string, string>[] = [];
+  let current: Record<string, string> = {};
+  let currentFields = 0;
+  let currentBytes = 0;
 
-  try {
-    const totalCount = await adapter.zCard(ZSET_KEY);
-    return totalCount === expectedCount;
-  } catch {
-    return false;
+  for (const [field, value] of Object.entries(mapping)) {
+    const itemBytes = field.length + value.length + 16;
+    if (currentFields >= maxFields || (currentFields > 0 && currentBytes + itemBytes > maxBytes)) {
+      chunks.push(current);
+      current = {};
+      currentFields = 0;
+      currentBytes = 0;
+    }
+    current[field] = value;
+    currentFields += 1;
+    currentBytes += itemBytes;
   }
+
+  if (currentFields > 0) chunks.push(current);
+  return chunks;
 }
 
 export async function setCachedWindow(articles: NewsArticle[]): Promise<CacheLayer> {
-  const serialized = articles.map(serializeArticle);
-  memoryCache = { articles: serialized, updatedAt: Date.now() };
-
   const adapter = await getRedisAdapter();
-  if (!adapter) {
-    return "memory";
-  }
+  if (!adapter) return "memory";
+
+  const serialized = articles.map(serializeArticle);
+  const version = Date.now();
+  const stagingZset = `news:articles:staging:${version}:zset`;
+  const stagingHash = `news:articles:staging:${version}:hash`;
 
   try {
-    await adapter.del(ZSET_KEY, HASH_KEY, META_KEY);
-    const entries = serialized.map((article) => ({
-      score: articleScore(article),
-      member: article.id,
-    }));
-    const hashPayload = Object.fromEntries(
-      serialized.map((article) => [article.id, JSON.stringify(article)])
-    );
-    await adapter.zAddMany(ZSET_KEY, entries);
-    await adapter.hSetMany(HASH_KEY, hashPayload);
-    const isRedisConsistent = await verifyRedisWindowIntegrity(serialized.length);
-    if (!isRedisConsistent) {
-      throw new Error("[Beacon] Redis integrity check failed after cache write");
+    const entries = serialized.map((a) => ({ score: articleScore(a), member: a.id }));
+    for (const chunk of chunkArray(entries, ZADD_CHUNK_SIZE)) {
+      const p = adapter.pipeline();
+      for (const e of chunk) {
+        p.zadd(stagingZset, e.score, e.member);
+      }
+      await p.exec();
     }
-    const meta = buildMeta(serialized);
-    await adapter.hSetMany(META_KEY, {
-      updatedAt: String(meta.updatedAt),
-      maxPublishedAt: meta.maxPublishedAt ?? "",
-      totalCount: String(meta.totalCount),
-    });
 
-    await Promise.all([
-      adapter.expire(ZSET_KEY, CACHE_TTL_SECONDS),
-      adapter.expire(HASH_KEY, CACHE_TTL_SECONDS),
-      adapter.expire(META_KEY, CACHE_TTL_SECONDS),
-    ]);
+    const hashPayload = Object.fromEntries(
+      serialized.map((a) => [a.id, JSON.stringify(a)])
+    );
+    for (const chunk of chunkHashMapping(hashPayload, HASH_CHUNK_SIZE, HASH_CHUNK_MAX_BYTES)) {
+      await adapter.hSetMany(stagingHash, chunk);
+    }
+
+    await adapter.pipeline()
+      .rename(stagingZset, ZSET_KEY)
+      .rename(stagingHash, HASH_KEY)
+      .expire(ZSET_KEY, CACHE_TTL_SECONDS)
+      .expire(HASH_KEY, CACHE_TTL_SECONDS)
+      .hset(META_KEY, {
+        totalCount: String(serialized.length),
+        updatedAt: String(Date.now()),
+        maxPublishedAt: serialized[0]?.timestamp ?? "",
+        version: String(version),
+      })
+      .expire(META_KEY, CACHE_TTL_SECONDS)
+      .exec();
 
     return adapter.mode === "upstash" ? "redis-upstash" : "redis-url";
   } catch (error) {
-    console.warn("[Beacon] Redis cache write failed, memory cache kept", error);
+    console.warn("[Beacon] Blue/green cache warm failed, cleaning staging keys", error);
+    await adapter.del(stagingZset, stagingHash).catch(() => {});
     return "memory";
   }
 }
 
-export async function upsertCachedArticle(article: NewsArticle): Promise<void> {
+// --- Write path: Per-article write-through (called by AI Edge Function) ---
+
+const WRITE_THROUGH_SCRIPT = `
+local existing = redis.call('ZSCORE', KEYS[1], ARGV[1])
+redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
+redis.call('HSET', KEYS[2], ARGV[1], ARGV[3])
+redis.call('HSET', KEYS[3], ARGV[4], ARGV[5])
+if existing == false then
+  redis.call('HINCRBY', KEYS[4], 'totalCount', 1)
+end
+local currentMax = redis.call('HGET', KEYS[4], 'maxPublishedAt')
+if currentMax == false or ARGV[6] > currentMax then
+  redis.call('HSET', KEYS[4], 'maxPublishedAt', ARGV[6])
+end
+return 1
+`;
+
+export async function writeArticleToCache(article: NewsArticle): Promise<void> {
+  const adapter = await getRedisAdapter();
+  if (!adapter) return;
+
   const serialized = serializeArticle(article);
-
-  // Always keep memory fallback warm
-  const existingIndex = memoryCache.articles.findIndex((item) => item.id === article.id);
-  if (existingIndex >= 0) {
-    memoryCache.articles.splice(existingIndex, 1);
-  }
-  const insertIndex = memoryCache.articles.findIndex(
-    (item) => new Date(item.timestamp).getTime() < article.timestamp.getTime()
-  );
-  if (insertIndex === -1) {
-    memoryCache.articles.push(serialized);
-  } else {
-    memoryCache.articles.splice(insertIndex, 0, serialized);
-  }
-
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  memoryCache.articles = memoryCache.articles.filter(
-    (item) => new Date(item.timestamp).getTime() >= cutoff
-  );
-  memoryCache.updatedAt = Date.now();
-
-  const adapter = await getRedisAdapter();
-  if (!adapter) return;
+  const score = articleScore(serialized);
 
   try {
-    const score = article.timestamp.getTime();
-    await adapter.zAddMany(ZSET_KEY, [{ score, member: article.id }]);
-    await adapter.hSetOne(HASH_KEY, article.id, JSON.stringify(serialized));
-    await adapter.zRemRangeByScore(ZSET_KEY, Number.NEGATIVE_INFINITY, cutoff - 1);
-
-    const totalCount = await adapter.zCard(ZSET_KEY);
-    await adapter.hSetMany(META_KEY, {
-      updatedAt: String(Date.now()),
-      maxPublishedAt: memoryCache.articles[0]?.timestamp ?? "",
-      totalCount: String(totalCount),
-    });
-    await Promise.all([
-      adapter.expire(ZSET_KEY, CACHE_TTL_SECONDS),
-      adapter.expire(HASH_KEY, CACHE_TTL_SECONDS),
-      adapter.expire(META_KEY, CACHE_TTL_SECONDS),
-    ]);
+    await adapter.evalScript(
+      WRITE_THROUGH_SCRIPT,
+      [ZSET_KEY, HASH_KEY, LOCATIONS_KEY, META_KEY],
+      [
+        article.id,
+        String(score),
+        JSON.stringify(serialized),
+        article.location.name,
+        JSON.stringify({
+          name: article.location.name,
+          lat: article.location.lat,
+          lng: article.location.lng,
+          country: article.location.country,
+          region: article.location.region,
+        }),
+        serialized.timestamp,
+      ],
+    );
   } catch (error) {
-    console.warn("[Beacon] Redis incremental cache update failed", error);
+    console.warn("[Beacon] Per-article cache write failed", error);
   }
 }
 
-export async function clearCachedWindow(): Promise<void> {
-  memoryCache = { articles: [], updatedAt: 0 };
-  const adapter = await getRedisAdapter();
-  if (!adapter) return;
-  try {
-    await adapter.del(ZSET_KEY, HASH_KEY, META_KEY);
-  } catch (error) {
-    console.warn("[Beacon] Failed clearing Redis cache", error);
-  }
+// --- Upsert (for realtime updates to existing articles) ---
+
+export async function upsertCachedArticle(article: NewsArticle): Promise<void> {
+  return writeArticleToCache(article);
 }
+
+// --- Integrity ---
+
+export { verifyCacheIntegrity };
 
 export function getMemoryCacheAgeMs(): number {
-  return memoryCache.updatedAt ? Date.now() - memoryCache.updatedAt : 0;
+  return 0;
 }
-
